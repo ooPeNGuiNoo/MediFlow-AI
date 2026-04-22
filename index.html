@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MediFlow AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Sora', sans-serif; }
+
+    body {
+      background: radial-gradient(ellipse at 60% 0%, #dbeafe 0%, #f0fdf4 45%, #f8fafc 100%);
+      min-height: 100vh;
+    }
+
+    .role-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .role-card:hover { transform: translateY(-6px); box-shadow: 0 24px 48px rgba(0,0,0,0.10); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fu  { animation: fadeUp 0.55s ease both; }
+    .d1  { animation-delay: 0.10s; }
+    .d2  { animation-delay: 0.25s; }
+    .d3  { animation-delay: 0.40s; }
+  </style>
+</head>
+
+<body class="flex flex-col items-center justify-center min-h-screen px-6 py-12">
+
+  <!-- Logo -->
+  <div class="fu flex items-center gap-3 mb-12">
+    <div class="w-11 h-11 bg-[#0284C7] rounded-2xl flex items-center justify-center shadow-lg shadow-sky-200">
+      <span class="text-white font-extrabold text-lg">M</span>
+    </div>
+    <div>
+      <p class="font-extrabold text-2xl leading-tight">MediFlow <span class="text-[#0284C7]">AI</span></p>
+      <p class="text-xs text-slate-400 font-medium tracking-wide">AI-Powered Pre-Consultation System</p>
+    </div>
+  </div>
+
+  <!-- Headline -->
+  <div class="fu d1 text-center mb-10">
+    <h1 class="text-3xl font-bold text-slate-800 mb-3">Who are you today?</h1>
+    <p class="text-slate-500 text-sm max-w-sm mx-auto leading-relaxed">
+      Select your role to continue. The AI will guide the right workflow for you.
+    </p>
+  </div>
+
+  <!-- Role Cards -->
+  <div class="fu d2 flex flex-col sm:flex-row gap-5 w-full max-w-2xl">
+
+    <!-- Patient card -->
+    <a href="chat.html"
+       class="role-card flex-1 bg-white rounded-3xl shadow-sm border border-slate-100 p-8 text-center no-underline block">
+      <div class="text-5xl mb-5">🧑‍🤒</div>
+      <h2 class="font-bold text-xl text-slate-800 mb-2">I'm a Patient</h2>
+      <p class="text-slate-500 text-sm leading-relaxed mb-6">
+        Describe your symptoms to our AI. It will ask follow-up questions and prepare your medical report before you see the doctor.
+      </p>
+      <div class="bg-[#0284C7] text-white text-sm font-semibold py-3 rounded-2xl hover:bg-[#0369a1] transition">
+        Start Consultation →
+      </div>
+    </a>
+
+    <!-- Doctor card -->
+    <a href="doctor.html"
+       class="role-card flex-1 bg-white rounded-3xl shadow-sm border border-slate-100 p-8 text-center no-underline block">
+      <div class="text-5xl mb-5">👨‍⚕️</div>
+      <h2 class="font-bold text-xl text-slate-800 mb-2">I'm a Doctor</h2>
+      <p class="text-slate-500 text-sm leading-relaxed mb-6">
+        Review AI-generated pre-consultation reports, add notes, then approve or reject before the patient walks in.
+      </p>
+      <div class="bg-slate-800 text-white text-sm font-semibold py-3 rounded-2xl hover:bg-slate-700 transition">
+        Open Dashboard →
+      </div>
+    </a>
+
+  </div>
+
+  <!-- Disclaimer -->
+  <p class="fu d3 mt-10 text-center text-xs text-slate-400 max-w-sm leading-relaxed">
+    ⚠️ MediFlow AI assists healthcare workflows only and does not replace the judgment of a licensed medical professional.
+  </p>
+
+</body>
+</html>

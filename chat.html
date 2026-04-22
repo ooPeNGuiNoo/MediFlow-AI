@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MediFlow AI — Pre-Consultation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Sora', sans-serif; }
+
+    /* Scrollbar */
+    #chatWindow::-webkit-scrollbar { width: 4px; }
+    #chatWindow::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+    /* Typing dots */
+    .dot {
+      width: 7px; height: 7px;
+      background: #94a3b8;
+      border-radius: 50%;
+      display: inline-block;
+      animation: dotBounce 1.2s infinite ease-in-out;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotBounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-7px); }
+    }
+
+    /* Message fade-in */
+    .msg { animation: msgIn 0.3s ease; }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Progress bar */
+    #progressFill { transition: width 0.5s ease; }
+
+    /* Input focus */
+    #inputBox:focus { outline: none; border-color: #0284C7; box-shadow: 0 0 0 3px rgba(2,132,199,0.12); }
+
+    /* Report card severity colours */
+    .sev-low    { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+    .sev-medium { background: #fef9c3; color: #854d0e; border-color: #fef08a; }
+    .sev-high   { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+  </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen flex flex-col">
+
+  <!-- ═══════════════════════════════
+       NAVBAR
+  ════════════════════════════════ -->
+  <nav class="bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between sticky top-0 z-20">
+    <a href="index.html" class="flex items-center gap-2 no-underline">
+      <div class="w-8 h-8 bg-[#0284C7] rounded-xl flex items-center justify-center">
+        <span class="text-white font-bold text-sm">M</span>
+      </div>
+      <span class="font-bold text-slate-800">MediFlow <span class="text-[#0284C7]">AI</span></span>
+    </a>
+    <div class="flex items-center gap-4 text-sm">
+      <span class="text-slate-400 text-xs hidden sm:block">Pre-Consultation Chat</span>
+      <button onclick="resetChat()"
+        class="text-xs text-slate-400 hover:text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg transition">
+        ↩ Restart
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════
+       DOCTOR DECISION BANNER
+       Shown if doctor has approved/rejected a previous report
+  ════════════════════════════════ -->
+  <div id="decisionBanner" class="hidden px-5 py-3 text-sm text-center font-medium"></div>
+
+  <!-- ═══════════════════════════════
+       PROGRESS BAR
+       Shows how far along the AI questioning is
+  ════════════════════════════════ -->
+  <div class="bg-white border-b border-slate-100 px-5 py-2.5">
+    <div class="max-w-2xl mx-auto flex items-center gap-3">
+      <span class="text-xs text-slate-400 whitespace-nowrap" id="progressLabel">Waiting to start</span>
+      <div class="flex-1 bg-slate-100 rounded-full h-1.5">
+        <div id="progressFill" class="bg-[#0284C7] h-1.5 rounded-full" style="width:0%"></div>
+      </div>
+      <span class="text-xs text-slate-400 whitespace-nowrap" id="progressStep">0 / 6</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════
+       MAIN LAYOUT
+  ════════════════════════════════ -->
+  <div class="flex flex-1 gap-5 p-5 max-w-4xl mx-auto w-full">
+
+    <!-- Chat window -->
+    <div class="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
+         style="max-height: calc(100vh - 160px);">
+
+      <!-- Chat header -->
+      <div class="px-5 py-3.5 border-b border-slate-100 flex items-center gap-3">
+        <div class="relative">
+          <div class="w-9 h-9 bg-sky-100 rounded-full flex items-center justify-center text-lg">🤖</div>
+          <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border-2 border-white rounded-full"></span>
+        </div>
+        <div>
+          <p class="font-semibold text-sm text-slate-800">MediFlow AI</p>
+          <p class="text-xs text-emerald-500">Online · Pre-Consultation Assistant</p>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div id="chatWindow" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
+
+      <!-- Input bar -->
+      <div class="px-4 py-3 border-t border-slate-100 flex gap-2 items-end">
+        <textarea id="inputBox" rows="1"
+          placeholder="Type your message... (Enter to send)"
+          class="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm resize-none transition"
+          oninput="autoResize(this)"
+          onkeydown="handleKey(event)"></textarea>
+        <button id="sendBtn" onclick="handleSend()"
+          class="bg-[#0284C7] hover:bg-[#0369a1] text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 flex-shrink-0">
+          Send
+        </button>
+      </div>
+    </div>
+
+    <!-- Side panel (desktop) -->
+    <div class="hidden lg:flex flex-col gap-4 w-56 flex-shrink-0">
+
+      <!-- Tips -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+        <p class="text-xs font-bold text-[#0284C7] uppercase tracking-wide mb-3">💡 Tips</p>
+        <ul class="text-xs text-slate-500 space-y-2 leading-relaxed">
+          <li>• Be specific — "sharp pain in chest" not just "pain"</li>
+          <li>• Include how long it's been going on</li>
+          <li>• Mention if it's getting worse or better</li>
+          <li>• List any meds you've taken</li>
+        </ul>
+      </div>
+
+      <!-- Live collected data preview -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">📋 Collected So Far</p>
+        <div id="collectedPanel" class="text-xs text-slate-500 space-y-1.5">
+          <p class="italic text-slate-300">Nothing yet…</p>
+        </div>
+      </div>
+
+      <!-- Disclaimer -->
+      <div class="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-xs text-amber-700 leading-relaxed">
+        ⚠️ This AI provides assistance only — not a medical diagnosis.
+      </div>
+
+    </div>
+  </div>
+
+<!-- ═══════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════════ -->
+<script>
+
+// ══════════════════════════════════════════
+// ⚙️  CONFIGURATION
+// ══════════════════════════════════════════
+
+const CONFIG = {
+  // ── Toggle between fake AI (testing) and real GLM API ──
+  // Set USE_GLM to true when you have your API key
+  USE_GLM: false,
+
+  // ── Your GLM API key (leave empty while testing) ──
+  GLM_API_KEY: "",
+
+  // ── GLM model to use ──
+  GLM_MODEL: "glm-4-flash",    // or "glm-4" for best quality
+
+  // ── GLM API endpoint ──
+  GLM_ENDPOINT: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+
+  // ── How many turns before AI tries to wrap up ──
+  // GLM decides dynamically, this is just a safety cap
+  MAX_TURNS: 12,
+};
+
+// ══════════════════════════════════════════
+// 🧠  SYSTEM PROMPT
+// This tells GLM exactly how to behave.
+// Edit this to tune the AI's questioning style.
+// ══════════════════════════════════════════
+
+const SYSTEM_PROMPT = `
+You are MediFlow AI, a professional medical pre-consultation assistant.
+Your goal is to collect enough clinical information from a patient to generate a structured triage report for a doctor to review.
+
+## Your behavior rules
+
+1. **Ask ONE question at a time.** Never combine multiple questions.
+2. **Ask questions in a natural, conversational order.** Start with what's wrong, then dig deeper.
+3. **Adapt dynamically.** If the patient already answers something in their previous message, skip that question.
+4. **Handle vague inputs.** If the patient says something vague like "I don't feel well" or "I'm sick", gently ask them to be more specific.
+5. **Cover these areas before generating the report:**
+   - Chief complaint (what's wrong)
+   - Body location of the symptom
+   - Duration (how long)
+   - Severity (ask them to rate 1–10 if helpful)
+   - Associated symptoms (fever, nausea, shortness of breath, etc.)
+   - Any medication taken or known medical history relevant to this complaint
+6. **You decide when you have enough information.** You don't need to ask all 6 areas if the patient's answers already covered them.
+7. **Do NOT reveal your assessment to the patient.** Do not say "you might have X". Do not say the severity level.
+8. **Be warm and professional.** Short, clear sentences.
+
+## Output format
+
+While questioning: respond with just your next question as plain text.
+
+When you have collected enough information, respond ONLY with a JSON object — no extra text before or after. Use this exact format:
+
+{
+  "done": true,
+  "chiefComplaint": "...",
+  "location": "...",
+  "duration": "...",
+  "severity": "low" | "medium" | "high",
+  "severityScore": 1-10,
+  "associatedSymptoms": "...",
+  "medicationHistory": "...",
+  "aiReasoning": "...",
+  "suggestedAction": "...",
+  "confidence": 0-100,
+  "possibleCauses": [
+    { "name": "...", "likelihood": "high" | "medium" | "low", "explanation": "..." },
+    { "name": "...", "likelihood": "high" | "medium" | "low", "explanation": "..." }
+  ],
+  "treatmentPlan": [
+    { "step": "...", "detail": "...", "urgency": "immediate" | "soon" | "routine" }
+  ]
+}
+
+Severity guide:
+- low: mild, non-urgent, monitor at home
+- medium: concerning, should see a doctor within 24–48 hours
+- high: urgent or potentially serious, needs prompt medical attention
+
+possibleCauses: List 2–4 differential diagnoses most consistent with the reported symptoms.
+Each must include a plain-English explanation of why it fits (for the doctor to quickly assess).
+
+treatmentPlan: List 3–5 concrete, ordered steps the doctor should consider.
+Each step must include a brief clinical explanation. Mark urgency clearly.
+
+The aiReasoning field should explain your overall clinical reasoning in 1–2 sentences.
+`.trim();
+
+// ══════════════════════════════════════════
+// 📦  LOCALSTORAGE KEYS
+// Centralised so nothing gets misspelled
+// ══════════════════════════════════════════
+
+const STORAGE = {
+  PENDING_REPORT:  "mf_report_pending",   // Object — the latest report waiting for doctor review
+  REPORT_FLAG:     "mf_report_flag",      // Timestamp string — doctor polls this to detect new reports
+  DOCTOR_DECISION: "mf_decision",         // Object — doctor's approve/reject result
+  HISTORY:         "mf_history",          // Array — all past completed reports
+};
+
+// ══════════════════════════════════════════
+// 📊  STATE
+// ══════════════════════════════════════════
+
+let conversationHistory = []; // sent to GLM each turn: [{role, content}, ...]
+let turnCount     = 0;
+let sessionDone   = false;
+let queueInfo     = null;
+
+// ══════════════════════════════════════════
+// 🌐  GLM API CALL
+// ══════════════════════════════════════════
+
+async function callGLM(userMessage) {
+  // Add user message to history
+  conversationHistory.push({ role: "user", content: userMessage });
+
+  const response = await fetch(CONFIG.GLM_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${CONFIG.GLM_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: CONFIG.GLM_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...conversationHistory
+      ],
+      temperature: 0.3,   // lower = more consistent/clinical
+      max_tokens: 600,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GLM API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const reply = data.choices[0].message.content.trim();
+
+  // Add assistant reply to history (for multi-turn context)
+  conversationHistory.push({ role: "assistant", content: reply });
+
+  return reply;
+}
+
+// ══════════════════════════════════════════
+// 🧪  FAKE AI (used when USE_GLM = false)
+//
+// Simple flat implementation — no IIFE, no closures.
+// Easy to read and debug.
+//
+// Flow (one question per turn):
+//   Turn 0 input → chief complaint  → asks about location
+//   Turn 1 input → location         → asks about duration
+//   Turn 2 input → duration         → asks severity score
+//   Turn 3 input → severity score   → asks associated symptoms
+//   Turn 4 input → associated       → asks medication / history
+//   Turn 5 input → medication/hx    → generates final report JSON
+// ══════════════════════════════════════════
+
+// Stored between turns (reset on restart)
+var fakeData = {};
+
+// The follow-up questions, in order
+var FAKE_QUESTIONS = [
+  "I see. Where exactly are you feeling this? (e.g. chest, head, stomach, left knee)",
+  "How long have you been experiencing this?",
+  "On a scale of 1 to 10, how severe is the discomfort right now?",
+  "Are there any other symptoms alongside this? For example — fever, nausea, dizziness, vomiting, or shortness of breath?",
+  "Have you taken any medication for this, or is there any relevant medical history I should know about?"
+];
+
+function fakeAI_collect(input, turnNumber) {
+  // Save each turn's answer into fakeData
+  if (turnNumber === 0) fakeData.chiefComplaint    = input;
+  if (turnNumber === 1) fakeData.location          = input;
+  if (turnNumber === 2) fakeData.duration          = input;
+  if (turnNumber === 3) {
+    var m = input.match(/\d+/);
+    fakeData.severityScore = m ? parseInt(m[0]) : 5;
+  }
+  if (turnNumber === 4) fakeData.associatedSymptoms = input;
+  if (turnNumber === 5) fakeData.medicationHistory  = input;
+}
+
+function fakeAI_generateReport() {
+  var score     = fakeData.severityScore || 5;
+  var complaint = (fakeData.chiefComplaint    || "").toLowerCase();
+  var assoc     = (fakeData.associatedSymptoms || "").toLowerCase();
+
+  var severity   = "low";
+  var reasoning  = "Mild symptoms reported. No immediate red flags detected.";
+  var action     = "Monitor at home. Rest and stay hydrated. Seek care if symptoms worsen.";
+  var confidence = 65;
+
+  if (
+    score >= 8 ||
+    complaint.indexOf("bleed") !== -1 ||
+    complaint.indexOf("chest")  !== -1 ||
+    assoc.indexOf("shortness of breath") !== -1 ||
+    assoc.indexOf("can't breathe")       !== -1 ||
+    assoc.indexOf("cannot breathe")      !== -1 ||
+    assoc.indexOf("unconscious")         !== -1
+  ) {
+    severity   = "high";
+    reasoning  = "High severity score or critical symptom detected (chest pain, bleeding, breathing difficulty).";
+    action     = "Seek emergency medical attention immediately.";
+    confidence = 88;
+  } else if (
+    score >= 5 ||
+    complaint.indexOf("pain")   !== -1 ||
+    assoc.indexOf("fever")      !== -1 ||
+    assoc.indexOf("vomit")      !== -1 ||
+    assoc.indexOf("nausea")     !== -1 ||
+    assoc.indexOf("dizziness")  !== -1
+  ) {
+    severity   = "medium";
+    reasoning  = "Moderate severity with accompanying symptoms. Medical consultation recommended.";
+    action     = "Visit a clinic or doctor within 24 hours.";
+    confidence = 74;
+  }
+
+  return {
+    done:               true,
+    chiefComplaint:     fakeData.chiefComplaint     || "Not specified",
+    location:           fakeData.location           || "Not specified",
+    duration:           fakeData.duration           || "Not specified",
+    severity:           severity,
+    severityScore:      score,
+    associatedSymptoms: fakeData.associatedSymptoms || "None reported",
+    medicationHistory:  fakeData.medicationHistory  || "None reported",
+    aiReasoning:        reasoning,
+    suggestedAction:    action,
+    confidence:         confidence,
+    possibleCauses:     fakeAI_guessCauses(complaint, assoc, score),
+    treatmentPlan:      fakeAI_guessTreatment(severity, complaint, assoc)
+  };
+}
+
+// ── Fake differential diagnosis ──────────────────────────
+function fakeAI_guessCauses(complaint, assoc, score) {
+  var causes = [];
+
+  if (complaint.indexOf("head") !== -1 || complaint.indexOf("migraine") !== -1) {
+    causes.push({ name: "Tension Headache",  likelihood: "high",   explanation: "Most common cause of persistent head pain, often linked to stress or posture." });
+    causes.push({ name: "Migraine",          likelihood: "medium", explanation: "Suggested by unilateral or throbbing pain; associated nausea supports this." });
+    causes.push({ name: "Hypertension",      likelihood: "low",    explanation: "Elevated blood pressure can present as headache; worth checking BP." });
+  } else if (complaint.indexOf("chest") !== -1) {
+    causes.push({ name: "Musculoskeletal Pain",   likelihood: "medium", explanation: "Costochondritis or muscle strain is common and typically non-urgent." });
+    causes.push({ name: "Gastric Reflux (GERD)",  likelihood: "medium", explanation: "Burning chest discomfort that may mimic cardiac pain." });
+    causes.push({ name: "Cardiac Event (ACS)",    likelihood: score >= 7 ? "medium" : "low", explanation: "Must be ruled out given chest location; ECG recommended." });
+  } else if (complaint.indexOf("stomach") !== -1 || complaint.indexOf("abdomen") !== -1 || complaint.indexOf("abdom") !== -1) {
+    causes.push({ name: "Gastroenteritis",    likelihood: "high",   explanation: "Inflammation of the stomach lining; often paired with nausea or diarrhoea." });
+    causes.push({ name: "Irritable Bowel Syndrome (IBS)", likelihood: "medium", explanation: "Chronic functional disorder causing cramping and changed bowel habits." });
+    causes.push({ name: "Appendicitis",       likelihood: assoc.indexOf("fever") !== -1 ? "medium" : "low", explanation: "Right lower quadrant pain with fever increases suspicion." });
+  } else if (assoc.indexOf("fever") !== -1) {
+    causes.push({ name: "Viral Infection (e.g. Influenza)", likelihood: "high",   explanation: "Fever with general malaise is consistent with a viral illness." });
+    causes.push({ name: "Bacterial Infection",              likelihood: "medium", explanation: "Persistent high fever warrants CBC to rule out bacterial source." });
+    causes.push({ name: "COVID-19 or similar respiratory illness", likelihood: "medium", explanation: "Respiratory symptoms with fever should prompt screening." });
+  } else {
+    causes.push({ name: "Non-specific Viral Illness", likelihood: "high",   explanation: "General symptoms without clear focal point are often viral in origin." });
+    causes.push({ name: "Stress or Anxiety",           likelihood: "medium", explanation: "Somatic symptoms can manifest from psychological stress." });
+    causes.push({ name: "Musculoskeletal Strain",      likelihood: "low",    explanation: "Physical overexertion or poor posture may explain diffuse discomfort." });
+  }
+
+  return causes;
+}
+
+// ── Fake treatment plan ──────────────────────────────────
+function fakeAI_guessTreatment(severity, complaint, assoc) {
+  var plan = [];
+
+  if (severity === "high") {
+    plan.push({ step: "Immediate triage & vitals", detail: "Record BP, HR, SpO2, temperature immediately upon arrival.", urgency: "immediate" });
+    plan.push({ step: "ECG / imaging as indicated", detail: "For chest pain, perform 12-lead ECG within 10 minutes. For abdominal pain, consider abdominal ultrasound.", urgency: "immediate" });
+    plan.push({ step: "IV access & blood workup", detail: "Full blood count, metabolic panel, troponin if cardiac presentation suspected.", urgency: "immediate" });
+    plan.push({ step: "Pain management", detail: "Administer analgesics as clinically appropriate pending diagnosis.", urgency: "soon" });
+  } else if (severity === "medium") {
+    plan.push({ step: "Full physical examination", detail: "Conduct focused exam on affected region. Document all findings.", urgency: "soon" });
+    plan.push({ step: "Basic investigations", detail: "Full blood count and urinalysis recommended. Consider chest X-ray if respiratory symptoms present.", urgency: "soon" });
+    plan.push({ step: "Symptomatic relief", detail: "Prescribe appropriate analgesic or antiemetic based on presenting symptoms.", urgency: "soon" });
+    plan.push({ step: "Follow-up in 48 hours", detail: "If symptoms do not improve, reassess and escalate investigations.", urgency: "routine" });
+  } else {
+    plan.push({ step: "Focused physical exam", detail: "Assess the reported area; look for tenderness, swelling, or abnormal sounds.", urgency: "routine" });
+    plan.push({ step: "Patient education", detail: "Advise rest, adequate hydration, and over-the-counter relief if appropriate.", urgency: "routine" });
+    plan.push({ step: "Watchful waiting", detail: "No urgent investigations needed at this stage. Monitor for 48–72 hours.", urgency: "routine" });
+    plan.push({ step: "Return if worsening", detail: "Instruct patient to return or seek emergency care if symptoms escalate.", urgency: "routine" });
+  }
+
+  return plan;
+}
+
+// Main entry point called by handleSend()
+async function fakeAI_respond(userInput, turnNumber) {
+  // Simulate network delay
+  await new Promise(function(resolve) { setTimeout(resolve, 800 + Math.random() * 400); });
+
+  // Save this turn's answer
+  fakeAI_collect(userInput, turnNumber);
+
+  // After turn 5, we have all 6 answers — generate the report
+  if (turnNumber >= 5) {
+    return JSON.stringify(fakeAI_generateReport());
+  }
+
+  // Otherwise return the next question
+  return FAKE_QUESTIONS[turnNumber] || "Thank you, let me compile your report now.";
+}
+
+function fakeAI_reset() {
+  fakeData = {};
+}
+
+// Thin wrapper so the rest of the code can still call fakeAI.respond() / fakeAI.reset()
+var fakeAI = {
+  respond: fakeAI_respond,
+  reset:   fakeAI_reset
+};
+
+// ══════════════════════════════════════════
+// 🖥️  UI HELPERS
+// ══════════════════════════════════════════
+
+function renderBubble(html, sender) {
+  const chat   = document.getElementById("chatWindow");
+  const isUser = sender === "user";
+  const wrap   = document.createElement("div");
+  wrap.className = `flex ${isUser ? "justify-end" : "justify-start"} msg`;
+  wrap.innerHTML = `
+    <div class="max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
+      ${isUser
+        ? "bg-[#0284C7] text-white rounded-tr-sm"
+        : "bg-slate-100 text-slate-800 rounded-tl-sm"}">
+      ${html}
+    </div>`;
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function typeText(text, sender, speed = 16) {
+  const chat   = document.getElementById("chatWindow");
+  const isUser = sender === "user";
+  const wrap   = document.createElement("div");
+  wrap.className = `flex ${isUser ? "justify-end" : "justify-start"} msg`;
+  const bubble   = document.createElement("div");
+  bubble.className = `max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
+    ${isUser
+      ? "bg-[#0284C7] text-white rounded-tr-sm"
+      : "bg-slate-100 text-slate-800 rounded-tl-sm"}`;
+  wrap.appendChild(bubble);
+  chat.appendChild(wrap);
+  let i = 0;
+  const t = () => {
+    if (i < text.length) { bubble.textContent += text[i++]; chat.scrollTop = chat.scrollHeight; setTimeout(t, speed); }
+  };
+  t();
+}
+
+function showTypingIndicator() {
+  const chat = document.getElementById("chatWindow");
+  const wrap = document.createElement("div");
+  wrap.id = "typingWrap";
+  wrap.className = "flex justify-start msg";
+  wrap.innerHTML = `
+    <div class="bg-slate-100 px-4 py-3 rounded-2xl rounded-tl-sm flex gap-1.5 items-center">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>`;
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  document.getElementById("typingWrap")?.remove();
+}
+
+function setInputLocked(locked) {
+  document.getElementById("inputBox").disabled = locked;
+  document.getElementById("sendBtn").disabled  = locked;
+}
+
+function updateProgress(step, total = 6) {
+  const pct = Math.min(Math.round((step / total) * 100), 100);
+  document.getElementById("progressFill").style.width = pct + "%";
+  document.getElementById("progressStep").textContent = `${step} / ${total}`;
+  document.getElementById("progressLabel").textContent =
+    pct === 0   ? "Waiting to start"   :
+    pct < 50    ? "Collecting info…"   :
+    pct < 100   ? "Almost there…"      :
+                  "Report ready ✓";
+}
+
+function updateCollectedPanel(report) {
+  const panel = document.getElementById("collectedPanel");
+  const rows = [
+    ["🩺 Complaint",   report.chiefComplaint],
+    ["📍 Location",    report.location],
+    ["⏱ Duration",    report.duration],
+    ["📊 Severity",   report.severityScore ? report.severityScore + " / 10" : null],
+    ["🌡 Associated", report.associatedSymptoms],
+    ["💊 Meds / Hx", report.medicationHistory],
+  ];
+  const filled = rows.filter(([, v]) => v && v !== "Not specified" && v !== "None reported");
+  if (filled.length === 0) {
+    panel.innerHTML = `<p class="italic text-slate-300">Nothing yet…</p>`;
+    return;
+  }
+  panel.innerHTML = filled.map(([label, val]) => `
+    <div>
+      <span class="font-semibold text-slate-600">${label}:</span>
+      <span class="text-slate-500"> ${val}</span>
+    </div>`).join("");
+}
+
+// ══════════════════════════════════════════
+// 📋  REPORT CARD
+// Shown at the end of the conversation
+// ══════════════════════════════════════════
+
+function showReportCard(report) {
+  const sevClass = { low: "sev-low", medium: "sev-medium", high: "sev-high" }[report.severity] || "sev-low";
+  const sevIcon  = { low: "🟢", medium: "🟡", high: "🔴" }[report.severity];
+  const sevLabel = { low: "LOW", medium: "MEDIUM", high: "HIGH" }[report.severity];
+
+  const chat = document.getElementById("chatWindow");
+  const wrap = document.createElement("div");
+  wrap.className = "msg";
+  wrap.innerHTML = `
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden max-w-sm">
+
+      <!-- Card header -->
+      <div class="bg-[#0284C7] px-5 py-3.5 text-white">
+        <p class="font-bold">📋 Pre-Consultation Report</p>
+        <p class="text-sky-200 text-xs mt-0.5">Generated by MediFlow AI · ${new Date().toLocaleString()}</p>
+      </div>
+
+      <!-- Severity badge -->
+      <div class="px-5 pt-4 pb-2">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${sevClass}">
+          ${sevIcon} ${sevLabel} SEVERITY
+        </span>
+      </div>
+
+      <!-- Report fields -->
+      <div class="px-5 pb-4 space-y-2 text-xs">
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <p class="text-slate-400 mb-0.5">Complaint</p>
+            <p class="font-semibold text-slate-700">${report.chiefComplaint}</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <p class="text-slate-400 mb-0.5">Location</p>
+            <p class="font-semibold text-slate-700">${report.location}</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <p class="text-slate-400 mb-0.5">Duration</p>
+            <p class="font-semibold text-slate-700">${report.duration}</p>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-2.5">
+            <p class="text-slate-400 mb-0.5">Severity Score</p>
+            <p class="font-semibold text-slate-700">${report.severityScore} / 10</p>
+          </div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-2.5">
+          <p class="text-slate-400 mb-0.5">Associated Symptoms</p>
+          <p class="font-semibold text-slate-700">${report.associatedSymptoms}</p>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-2.5">
+          <p class="text-slate-400 mb-0.5">Medication / History</p>
+          <p class="font-semibold text-slate-700">${report.medicationHistory}</p>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-2.5">
+          <p class="text-slate-400 mb-0.5">AI Confidence</p>
+          <p class="font-semibold text-[#0284C7]">${report.confidence}%</p>
+        </div>
+      </div>
+
+      <!-- Queue info -->
+      <div class="mx-5 mb-4 bg-sky-50 border border-sky-100 rounded-xl px-4 py-3">
+        <p class="text-xs text-sky-600 mb-1">Your appointment details:</p>
+        <p class="font-bold text-[#0284C7]">🏥 ${queueInfo.room}</p>
+        <p class="font-bold text-[#0284C7]">🎫 Queue Number: <span class="text-lg">${queueInfo.queueNo}</span></p>
+        <p class="text-xs text-sky-500 mt-1">Your report has been sent to the doctor for review.</p>
+      </div>
+
+    </div>
+  `;
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// ══════════════════════════════════════════
+// 💾  SAVE REPORT TO LOCALSTORAGE
+// ══════════════════════════════════════════
+
+function saveReport(report) {
+  // Generate a queue number for this session
+  const queueNo = "Q" + String(Math.floor(Math.random() * 90) + 10).padStart(2, "0");
+  const rooms   = ["Consultation Room 1", "Consultation Room 2", "Consultation Room 3", "Room A", "Room B"];
+  const room    = rooms[Math.floor(Math.random() * rooms.length)];
+  queueInfo     = { queueNo, room };
+
+  const fullReport = {
+    ...report,
+    queueNo,
+    room,
+    submittedAt: new Date().toLocaleString(),
+    // conversationHistory is stored so the doctor can see the full exchange if needed
+    conversation: conversationHistory,
+  };
+
+  // 1. Overwrite the "pending" slot — only one pending report at a time
+  localStorage.setItem(STORAGE.PENDING_REPORT, JSON.stringify(fullReport));
+
+  // 2. Update the flag so doctor's polling detects a new report
+  localStorage.setItem(STORAGE.REPORT_FLAG, Date.now().toString());
+
+  // 3. Append to history array (never deleted unless manually cleared)
+  const history = JSON.parse(localStorage.getItem(STORAGE.HISTORY) || "[]");
+  history.unshift({ ...fullReport, id: Date.now() });
+  // Cap history at 100 entries to avoid localStorage bloat
+  localStorage.setItem(STORAGE.HISTORY, JSON.stringify(history.slice(0, 100)));
+}
+
+// ══════════════════════════════════════════
+// 🚀  MAIN SEND / AI RESPONSE LOOP
+// ══════════════════════════════════════════
+
+async function handleSend() {
+  if (sessionDone) return;
+
+  const box   = document.getElementById("inputBox");
+  const input = box.value.trim();
+  if (!input) return;
+
+  box.value = "";
+  box.style.height = "auto";
+  setInputLocked(true);
+
+  // Show user message
+  renderBubble(escapeHtml(input), "user");
+
+  turnCount++;
+  updateProgress(Math.min(turnCount, 6));
+
+  // Show AI thinking
+  showTypingIndicator();
+
+  try {
+    let rawReply;
+
+    if (CONFIG.USE_GLM) {
+      rawReply = await callGLM(input);
+    } else {
+      rawReply = await fakeAI.respond(input, turnCount - 1);
+    }
+
+    removeTypingIndicator();
+
+    // Try to parse as JSON (report)
+    let parsed = null;
+    try {
+      // GLM sometimes wraps JSON in backticks — strip them
+      const clean = rawReply.replace(/```json|```/g, "").trim();
+      parsed = JSON.parse(clean);
+    } catch (_) {
+      // Not JSON — it's another question
+    }
+
+    if (parsed && parsed.done) {
+      // ── Report generated ──
+      sessionDone = true;
+      updateProgress(6);
+
+      saveReport(parsed);
+      updateCollectedPanel(parsed);
+
+      typeText("Thank you for sharing all that. I've put together your pre-consultation report. Please keep your queue number handy when you arrive.", "ai");
+
+      setTimeout(() => showReportCard(parsed), 500);
+      setInputLocked(true); // keep locked — consultation is done
+    } else {
+      // ── Next question ──
+      const question = (parsed !== null && typeof parsed === "object") ? (parsed.question || rawReply) : rawReply;
+      typeText(question, "ai");
+      setInputLocked(false);
+      setTimeout(() => document.getElementById("inputBox").focus(), 100);
+    }
+
+  } catch (err) {
+    removeTypingIndicator();
+    var errMsg = (err && err.message) ? err.message : String(err);
+    renderBubble(
+      "<b>Error:</b> " + errMsg + "<br><small style='opacity:0.7'>Open F12 console for full details.</small>",
+      "ai"
+    );
+    console.error("[MediFlow] Error in handleSend:", err);
+    setInputLocked(false);
+  }
+}
+
+// ══════════════════════════════════════════
+// 🔁  RESET / INIT
+// ══════════════════════════════════════════
+
+function resetChat() {
+  if (!sessionDone && turnCount > 0) {
+    if (!confirm("Are you sure you want to restart? Your progress will be lost.")) return;
+  }
+  conversationHistory = [];
+  turnCount     = 0;
+  sessionDone   = false;
+  queueInfo     = null;
+  fakeAI.reset();
+  document.getElementById("chatWindow").innerHTML = "";
+  document.getElementById("collectedPanel").innerHTML = `<p class="italic text-slate-300">Nothing yet…</p>`;
+  updateProgress(0);
+  initGreeting();
+}
+
+function initGreeting() {
+  // Show initial AI message with a short delay
+  showTypingIndicator();
+  setTimeout(() => {
+    removeTypingIndicator();
+    typeText(
+      "Hello! I'm MediFlow AI, your pre-consultation assistant. I'm going to ask you a few questions to prepare a report for your doctor before you go in. This usually takes about 2–3 minutes.",
+      "ai", 14
+    );
+    setTimeout(() => {
+      showTypingIndicator();
+      setTimeout(() => {
+        removeTypingIndicator();
+        typeText("Let's start — what's brought you in today? Please describe how you're feeling.", "ai", 14);
+        setInputLocked(false);
+        document.getElementById("inputBox").focus();
+      }, 900);
+    }, 2800);
+  }, 1000);
+}
+
+// ══════════════════════════════════════════
+// 🔔  DOCTOR DECISION BANNER
+// If doctor has already reviewed a previous report,
+// show the outcome at the top of this page
+// ══════════════════════════════════════════
+
+function loadDecisionBanner() {
+  const decision = JSON.parse(localStorage.getItem(STORAGE.DOCTOR_DECISION) || "null");
+  if (!decision) return;
+
+  const banner = document.getElementById("decisionBanner");
+  banner.classList.remove("hidden");
+
+  if (decision.status === "approved") {
+    banner.className = "px-5 py-3 text-sm text-center font-medium bg-emerald-50 text-emerald-700 border-b border-emerald-100";
+    banner.innerHTML = `✅ Your last report was <b>approved</b> by Dr. — Action: ${decision.action || "see report"}`;
+  } else {
+    banner.className = "px-5 py-3 text-sm text-center font-medium bg-red-50 text-red-600 border-b border-red-100";
+    banner.innerHTML = `❌ Your last report was <b>rejected</b>. Please start a new consultation below.`;
+  }
+}
+
+// ══════════════════════════════════════════
+// ⌨️  HELPERS
+// ══════════════════════════════════════════
+
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 140) + "px";
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ══════════════════════════════════════════
+// ▶️  BOOT
+// ══════════════════════════════════════════
+
+loadDecisionBanner();
+setInputLocked(true); // locked until greeting finishes
+initGreeting();
+
+</script>
+</body>
+</html>
