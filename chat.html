@@ -191,65 +191,81 @@ const CONFIG = {
 // ══════════════════════════════════════════
 
 const SYSTEM_PROMPT = `
-You are MediFlow AI, a professional medical pre-consultation assistant.
-Your goal is to collect enough clinical information from a patient to generate a structured triage report for a doctor to review.
+You are MediFlow AI, a clinical pre-consultation assistant integrated 
+into a hospital triage workflow. Your output is read by a licensed 
+doctor — not shown to the patient.
 
-## Your behavior rules
+## Conversation Rules
 
-1. **Ask ONE question at a time.** Never combine multiple questions.
-2. **Ask questions in a natural, conversational order.** Start with what's wrong, then dig deeper.
-3. **Adapt dynamically.** If the patient already answers something in their previous message, skip that question.
-4. **Handle vague inputs.** If the patient says something vague like "I don't feel well" or "I'm sick", gently ask them to be more specific.
-5. **Cover these areas before generating the report:**
-   - Chief complaint (what's wrong)
-   - Body location of the symptom
-   - Duration (how long)
-   - Severity (ask them to rate 1–10 if helpful)
-   - Associated symptoms (fever, nausea, shortness of breath, etc.)
-   - Any medication taken or known medical history relevant to this complaint
-6. **You decide when you have enough information.** You don't need to ask all 6 areas if the patient's answers already covered them.
-7. **Do NOT reveal your assessment to the patient.** Do not say "you might have X". Do not say the severity level.
-8. **Be warm and professional.** Short, clear sentences.
+1. Ask ONE question per message. Never combine two questions.
+2. Collect these 6 areas in order, but SKIP any already answered:
+   - Chief complaint (what's wrong, in patient's own words)
+   - Body location
+   - Duration
+   - Severity (ask patient to rate 1–10)
+   - Associated symptoms (fever, nausea, SOB, etc.)
+   - Medication taken / relevant medical history
+3. If input is vague ("I feel bad", "not well"), ask the patient 
+   to describe it more specifically. Do not guess.
+4. If input is clearly an emergency (chest pain + sweating, 
+   difficulty breathing, loss of consciousness), skip remaining 
+   questions and generate report immediately with severity: "high".
+5. Never tell the patient what you think they have.
+6. Never say words like "diagnosis", "disease", "condition" to patient.
+7. Be warm, brief, and clear. One sentence per response while questioning.
 
-## Output format
+## Output Rules
 
-While questioning: respond with just your next question as plain text.
+While collecting: reply with plain text question only. No JSON.
 
-When you have collected enough information, respond ONLY with a JSON object — no extra text before or after. Use this exact format:
+When done collecting, reply with ONLY a valid JSON object.
+No text before or after. No markdown code blocks. Raw JSON only.
 
 {
   "done": true,
-  "chiefComplaint": "...",
-  "location": "...",
-  "duration": "...",
-  "severity": "low" | "medium" | "high",
-  "severityScore": 1-10,
-  "associatedSymptoms": "...",
-  "medicationHistory": "...",
-  "aiReasoning": "...",
-  "suggestedAction": "...",
-  "confidence": 0-100,
+  "chiefComplaint": "patient's own words",
+  "location": "specific body part",
+  "duration": "e.g. 3 days, since this morning",
+  "severityScore": 7,
+  "severity": "low|medium|high",
+  "associatedSymptoms": "e.g. fever 38.5C, nausea, no vomiting",
+  "medicationHistory": "e.g. took paracetamol 500mg, no known allergies",
+  "aiReasoning": "2 sentence clinical reasoning for the doctor",
   "possibleCauses": [
-    { "name": "...", "likelihood": "high" | "medium" | "low", "explanation": "..." },
-    { "name": "...", "likelihood": "high" | "medium" | "low", "explanation": "..." }
+    {
+      "name": "diagnosis name",
+      "likelihood": "high|medium|low",
+      "supporting": "which symptoms support this",
+      "against": "which symptoms argue against this"
+    }
   ],
   "treatmentPlan": [
-    { "step": "...", "detail": "...", "urgency": "immediate" | "soon" | "routine" }
-  ]
+    {
+      "step": "action title",
+      "detail": "clinical explanation",
+      "urgency": "immediate|soon|routine"
+    }
+  ],
+  "suggestedAction": "one clear instruction for the doctor",
+  "confidence": 82
 }
 
-Severity guide:
-- low: mild, non-urgent, monitor at home
-- medium: concerning, should see a doctor within 24–48 hours
-- high: urgent or potentially serious, needs prompt medical attention
+## Severity Guide
+- low: self-limiting, no red flags, monitor at home
+- medium: needs assessment within 24 hours
+- high: urgent — red flag symptoms present, needs immediate attention
 
-possibleCauses: List 2–4 differential diagnoses most consistent with the reported symptoms.
-Each must include a plain-English explanation of why it fits (for the doctor to quickly assess).
+## possibleCauses Guide
+- List 2 to 4 differential diagnoses
+- Rank by likelihood (most likely first)
+- For each: state what supports it AND what argues against it
+- This is for doctor's reference only
 
-treatmentPlan: List 3–5 concrete, ordered steps the doctor should consider.
-Each step must include a brief clinical explanation. Mark urgency clearly.
-
-The aiReasoning field should explain your overall clinical reasoning in 1–2 sentences.
+## treatmentPlan Guide  
+- 3 to 5 steps, ordered by urgency
+- Start with what must be ruled out (red flags)
+- Then investigations, then management, then follow-up
+- Each step needs a brief clinical rationale
 `.trim();
 
 // ══════════════════════════════════════════
@@ -314,41 +330,74 @@ async function callGLM(userMessage) {
 // ══════════════════════════════════════════
 // 🧪  FAKE AI (used when USE_GLM = false)
 //
-// Simple flat implementation — no IIFE, no closures.
-// Easy to read and debug.
+// 5-turn flow — patient's first message IS turn 0 (chief complaint).
+// AI asks 4 follow-up questions, then generates the report.
 //
-// Flow (one question per turn):
-//   Turn 0 input → chief complaint  → asks about location
-//   Turn 1 input → location         → asks about duration
-//   Turn 2 input → duration         → asks severity score
-//   Turn 3 input → severity score   → asks associated symptoms
-//   Turn 4 input → associated       → asks medication / history
-//   Turn 5 input → medication/hx    → generates final report JSON
+//   Turn 0 input → saves chief complaint → asks location
+//   Turn 1 input → saves location        → asks duration
+//   Turn 2 input → saves duration        → asks severity score
+//   Turn 3 input → saves severity        → asks associated symptoms
+//   Turn 4 input → saves associated+meds → generates report JSON
+//
+// Edge cases handled:
+//   - Vague input ("sick", "not well", "I don't know") → asks to elaborate
+//   - Emergency keywords → immediate high-severity report
+//   - Very short input (1–2 chars) → asks to elaborate
 // ══════════════════════════════════════════
 
-// Stored between turns (reset on restart)
 var fakeData = {};
 
-// The follow-up questions, in order
-var FAKE_QUESTIONS = [
-  "I see. Where exactly are you feeling this? (e.g. chest, head, stomach, left knee)",
-  "How long have you been experiencing this?",
-  "On a scale of 1 to 10, how severe is the discomfort right now?",
-  "Are there any other symptoms alongside this? For example — fever, nausea, dizziness, vomiting, or shortness of breath?",
-  "Have you taken any medication for this, or is there any relevant medical history I should know about?"
+// Keywords that trigger an immediate emergency report
+var EMERGENCY_KEYWORDS = [
+  "can't breathe", "cannot breathe", "chest pain", "heart attack",
+  "unconscious", "fainted", "fainting", "severe bleeding", "bleed heavily",
+  "stroke", "paralysed", "paralyzed", "not breathing"
 ];
 
+// Keywords that mean the input is too vague to use
+var VAGUE_KEYWORDS = [
+  "sick", "unwell", "not well", "don't know", "i don't know",
+  "bad", "not good", "feel bad", "feel terrible", "not sure"
+];
+
+var FAKE_QUESTIONS = [
+  "Where exactly are you feeling this? (e.g. chest, head, stomach, left knee)",
+  "How long have you been experiencing this?",
+  "On a scale of 1 to 10, how severe is the discomfort right now?",
+  "Are there any other symptoms — such as fever, nausea, dizziness, vomiting, or shortness of breath? Also let me know if you've taken any medication for this."
+];
+
+function fakeAI_isEmergency(input) {
+  var t = input.toLowerCase();
+  for (var i = 0; i < EMERGENCY_KEYWORDS.length; i++) {
+    if (t.indexOf(EMERGENCY_KEYWORDS[i]) !== -1) return true;
+  }
+  return false;
+}
+
+function fakeAI_isVague(input) {
+  var t = input.trim().toLowerCase();
+  // Too short (1-2 meaningful words only)
+  if (t.split(" ").filter(function(w){ return w.length > 1; }).length <= 1 && t.length < 15) return true;
+  for (var i = 0; i < VAGUE_KEYWORDS.length; i++) {
+    if (t === VAGUE_KEYWORDS[i] || t === "i feel " + VAGUE_KEYWORDS[i]) return true;
+  }
+  return false;
+}
+
 function fakeAI_collect(input, turnNumber) {
-  // Save each turn's answer into fakeData
   if (turnNumber === 0) fakeData.chiefComplaint    = input;
   if (turnNumber === 1) fakeData.location          = input;
   if (turnNumber === 2) fakeData.duration          = input;
   if (turnNumber === 3) {
     var m = input.match(/\d+/);
-    fakeData.severityScore = m ? parseInt(m[0]) : 5;
+    fakeData.severityScore = m ? Math.min(parseInt(m[0]), 10) : 5;
   }
-  if (turnNumber === 4) fakeData.associatedSymptoms = input;
-  if (turnNumber === 5) fakeData.medicationHistory  = input;
+  // Turn 4: captures both associated symptoms and medication in one answer
+  if (turnNumber === 4) {
+    fakeData.associatedSymptoms = input;
+    fakeData.medicationHistory  = input; // patient describes both in one message
+  }
 }
 
 function fakeAI_generateReport() {
@@ -408,27 +457,94 @@ function fakeAI_generateReport() {
 // ── Fake differential diagnosis ──────────────────────────
 function fakeAI_guessCauses(complaint, assoc, score) {
   var causes = [];
+  var hasFever   = assoc.indexOf("fever")   !== -1;
+  var hasNausea  = assoc.indexOf("nausea")  !== -1 || assoc.indexOf("vomit") !== -1;
+  var hasSOB     = assoc.indexOf("breath")  !== -1 || assoc.indexOf("sob")   !== -1;
 
   if (complaint.indexOf("head") !== -1 || complaint.indexOf("migraine") !== -1) {
-    causes.push({ name: "Tension Headache",  likelihood: "high",   explanation: "Most common cause of persistent head pain, often linked to stress or posture." });
-    causes.push({ name: "Migraine",          likelihood: "medium", explanation: "Suggested by unilateral or throbbing pain; associated nausea supports this." });
-    causes.push({ name: "Hypertension",      likelihood: "low",    explanation: "Elevated blood pressure can present as headache; worth checking BP." });
+    causes.push({
+      name: "Tension Headache", likelihood: "high",
+      supporting: "Persistent head pain is the hallmark; stress or posture often triggers it.",
+      against:    "Tension headaches are typically bilateral and non-throbbing."
+    });
+    causes.push({
+      name: "Migraine", likelihood: hasNausea ? "high" : "medium",
+      supporting: hasNausea ? "Accompanying nausea strongly supports migraine." : "Head pain with possible photophobia pattern.",
+      against:    "Migraine typically has aura and is unilateral — confirm with patient."
+    });
+    causes.push({
+      name: "Hypertension-related Headache", likelihood: "low",
+      supporting: "Headache can be a symptom of elevated BP, especially occipital location.",
+      against:    "No BP reading available; needs measurement to assess."
+    });
+
   } else if (complaint.indexOf("chest") !== -1) {
-    causes.push({ name: "Musculoskeletal Pain",   likelihood: "medium", explanation: "Costochondritis or muscle strain is common and typically non-urgent." });
-    causes.push({ name: "Gastric Reflux (GERD)",  likelihood: "medium", explanation: "Burning chest discomfort that may mimic cardiac pain." });
-    causes.push({ name: "Cardiac Event (ACS)",    likelihood: score >= 7 ? "medium" : "low", explanation: "Must be ruled out given chest location; ECG recommended." });
-  } else if (complaint.indexOf("stomach") !== -1 || complaint.indexOf("abdomen") !== -1 || complaint.indexOf("abdom") !== -1) {
-    causes.push({ name: "Gastroenteritis",    likelihood: "high",   explanation: "Inflammation of the stomach lining; often paired with nausea or diarrhoea." });
-    causes.push({ name: "Irritable Bowel Syndrome (IBS)", likelihood: "medium", explanation: "Chronic functional disorder causing cramping and changed bowel habits." });
-    causes.push({ name: "Appendicitis",       likelihood: assoc.indexOf("fever") !== -1 ? "medium" : "low", explanation: "Right lower quadrant pain with fever increases suspicion." });
-  } else if (assoc.indexOf("fever") !== -1) {
-    causes.push({ name: "Viral Infection (e.g. Influenza)", likelihood: "high",   explanation: "Fever with general malaise is consistent with a viral illness." });
-    causes.push({ name: "Bacterial Infection",              likelihood: "medium", explanation: "Persistent high fever warrants CBC to rule out bacterial source." });
-    causes.push({ name: "COVID-19 or similar respiratory illness", likelihood: "medium", explanation: "Respiratory symptoms with fever should prompt screening." });
+    causes.push({
+      name: "Musculoskeletal Pain (Costochondritis)", likelihood: score < 6 ? "high" : "medium",
+      supporting: "Most common cause of chest pain in non-elderly patients; worsens with palpation.",
+      against:    "Cannot exclude cardiac cause without ECG — do not rely on this alone."
+    });
+    causes.push({
+      name: "Gastric Reflux (GERD)", likelihood: "medium",
+      supporting: "Burning chest discomfort that mimics cardiac pain; often worse after meals.",
+      against:    "Patient did not specifically mention heartburn or meal-related worsening."
+    });
+    causes.push({
+      name: "Acute Coronary Syndrome (ACS)", likelihood: score >= 7 ? "medium" : "low",
+      supporting: score >= 7 ? "High severity score ("+score+"/10) warrants cardiac exclusion." : "Chest location always requires cardiac rule-out.",
+      against:    "No radiation to arm/jaw or diaphoresis mentioned — still needs ECG."
+    });
+
+  } else if (complaint.indexOf("stomach") !== -1 || complaint.indexOf("abdomen") !== -1 || complaint.indexOf("abdom") !== -1 || complaint.indexOf("belly") !== -1) {
+    causes.push({
+      name: "Acute Gastroenteritis", likelihood: "high",
+      supporting: "Abdominal pain with " + (hasNausea ? "nausea/vomiting" : "GI symptoms") + " is classic for gastroenteritis.",
+      against:    "If pain is localised to RLQ, appendicitis must be excluded first."
+    });
+    causes.push({
+      name: "Irritable Bowel Syndrome (IBS)", likelihood: "medium",
+      supporting: "Recurring abdominal pain with altered bowel habits fits IBS pattern.",
+      against:    "IBS is a diagnosis of exclusion — acute onset argues against it."
+    });
+    causes.push({
+      name: "Appendicitis", likelihood: hasFever ? "medium" : "low",
+      supporting: hasFever ? "Fever combined with abdominal pain raises appendicitis suspicion." : "RLQ pain pattern is consistent.",
+      against:    "Confirm RLQ localisation and rebound tenderness on examination."
+    });
+
+  } else if (hasFever) {
+    causes.push({
+      name: "Viral Upper Respiratory Infection (URI)", likelihood: "high",
+      supporting: "Fever with general malaise is the most common presentation of viral illness.",
+      against:    "If fever > 39°C and persists > 3 days, bacterial cause should be considered."
+    });
+    causes.push({
+      name: "Bacterial Infection", likelihood: "medium",
+      supporting: "High or prolonged fever warrants CBC to rule out bacterial source.",
+      against:    "Viral illness is far more common and should be considered first."
+    });
+    causes.push({
+      name: "COVID-19 / Influenza", likelihood: "medium",
+      supporting: hasSOB ? "Fever with shortness of breath strongly suggests respiratory infection." : "Fever and malaise pattern is consistent with influenza.",
+      against:    "Requires rapid antigen test or PCR to confirm."
+    });
+
   } else {
-    causes.push({ name: "Non-specific Viral Illness", likelihood: "high",   explanation: "General symptoms without clear focal point are often viral in origin." });
-    causes.push({ name: "Stress or Anxiety",           likelihood: "medium", explanation: "Somatic symptoms can manifest from psychological stress." });
-    causes.push({ name: "Musculoskeletal Strain",      likelihood: "low",    explanation: "Physical overexertion or poor posture may explain diffuse discomfort." });
+    causes.push({
+      name: "Non-specific Viral Illness", likelihood: "high",
+      supporting: "General symptoms without a clear focal point are most often viral in origin.",
+      against:    "Monitor for localising symptoms that may point to a specific diagnosis."
+    });
+    causes.push({
+      name: "Stress or Anxiety (Somatic Symptoms)", likelihood: "medium",
+      supporting: "Physical symptoms without clear organic cause may have psychosomatic component.",
+      against:    "Organic causes should be excluded before attributing symptoms to anxiety."
+    });
+    causes.push({
+      name: "Musculoskeletal Strain", likelihood: "low",
+      supporting: "Diffuse discomfort may result from physical overexertion or poor posture.",
+      against:    "No specific history of exertion or trauma mentioned."
+    });
   }
 
   return causes;
@@ -460,18 +576,34 @@ function fakeAI_guessTreatment(severity, complaint, assoc) {
 
 // Main entry point called by handleSend()
 async function fakeAI_respond(userInput, turnNumber) {
-  // Simulate network delay
-  await new Promise(function(resolve) { setTimeout(resolve, 800 + Math.random() * 400); });
+  await new Promise(function(resolve) { setTimeout(resolve, 700 + Math.random() * 400); });
 
-  // Save this turn's answer
-  fakeAI_collect(userInput, turnNumber);
-
-  // After turn 5, we have all 6 answers — generate the report
-  if (turnNumber >= 5) {
+  // ── Edge case: emergency keywords → skip to report immediately ──
+  if (fakeAI_isEmergency(userInput)) {
+    fakeData.chiefComplaint    = userInput;
+    fakeData.location          = fakeData.location          || "chest / whole body";
+    fakeData.duration          = fakeData.duration          || "sudden onset";
+    fakeData.severityScore     = 10;
+    fakeData.associatedSymptoms = "EMERGENCY — " + userInput;
+    fakeData.medicationHistory  = fakeData.medicationHistory || "Unknown";
     return JSON.stringify(fakeAI_generateReport());
   }
 
-  // Otherwise return the next question
+  // ── Edge case: vague input on turn 0 → ask to elaborate ──
+  if (turnNumber === 0 && fakeAI_isVague(userInput)) {
+    // Don't increment — we don't save this as chiefComplaint yet
+    // Return without calling fakeAI_collect
+    return "I want to make sure I understand. Could you describe more specifically what you're experiencing? For example — is it a pain, a headache, dizziness, or something else?";
+  }
+
+  // ── Normal flow ──
+  fakeAI_collect(userInput, turnNumber);
+
+  // After turn 4 (5 total messages), generate report
+  if (turnNumber >= 4) {
+    return JSON.stringify(fakeAI_generateReport());
+  }
+
   return FAKE_QUESTIONS[turnNumber] || "Thank you, let me compile your report now.";
 }
 
@@ -479,7 +611,6 @@ function fakeAI_reset() {
   fakeData = {};
 }
 
-// Thin wrapper so the rest of the code can still call fakeAI.respond() / fakeAI.reset()
 var fakeAI = {
   respond: fakeAI_respond,
   reset:   fakeAI_reset
@@ -546,7 +677,7 @@ function setInputLocked(locked) {
   document.getElementById("sendBtn").disabled  = locked;
 }
 
-function updateProgress(step, total = 6) {
+function updateProgress(step, total = 5) {
   const pct = Math.min(Math.round((step / total) * 100), 100);
   document.getElementById("progressFill").style.width = pct + "%";
   document.getElementById("progressStep").textContent = `${step} / ${total}`;
@@ -708,7 +839,7 @@ async function handleSend() {
   renderBubble(escapeHtml(input), "user");
 
   turnCount++;
-  updateProgress(Math.min(turnCount, 6));
+  updateProgress(Math.min(turnCount, 5));
 
   // Show AI thinking
   showTypingIndicator();
