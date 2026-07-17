@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>MediFlow AI — Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Sora', sans-serif;
+        }
+
+        #chatWindow::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #chatWindow::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            background: #94a3b8;
+            border-radius: 50%;
+            display: inline-block;
+            animation: dotBounce 1.2s infinite ease-in-out;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: .2s;
+        }
+
+        .dot:nth-child(3) {
+            animation-delay: .4s;
+        }
+
+        @keyframes dotBounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0)
+            }
+
+            30% {
+                transform: translateY(-7px)
+            }
+        }
+
+        .msg {
+            animation: msgIn .3s ease;
+        }
+
+        @keyframes msgIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        #progressFill {
+            transition: width .5s ease;
+        }
+
+        #inputBox:focus {
+            outline: none;
+            border-color: #0284C7;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, .12);
+        }
+
+        .sev-low {
+            background: #dcfce7;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+
+        .sev-medium {
+            background: #fef9c3;
+            color: #854d0e;
+            border-color: #fef08a;
+        }
+
+        .sev-high {
+            background: #fee2e2;
+            color: #991b1b;
+            border-color: #fecaca;
+        }
+
+        /* Language tab switcher on report card */
+        .lang-tab {
+            font-family: 'Sora', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 8px 8px 0 0;
+            border: 1px solid transparent;
+            border-bottom: none;
+            color: #94a3b8;
+            background: transparent;
+            cursor: pointer;
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .lang-tab:hover {
+            color: #0284C7;
+            background: #f0f9ff;
+        }
+
+        .lang-tab-active {
+            font-family: 'Sora', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 5px 12px;
+            border-radius: 8px 8px 0 0;
+            border: 1px solid #e2e8f0;
+            border-bottom: 2px solid white;
+            color: #0284C7;
+            background: white;
+            cursor: default;
+            margin-bottom: -1px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .mode-card {
+            transition: transform .2s ease, box-shadow .2s ease;
+            cursor: pointer;
+        }
+
+        .mode-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 32px rgba(0, 0, 0, .1);
+        }
+
+        .mode-card.selected {
+            border-color: #0284C7;
+            background: #f0f9ff;
+        }
+
+        /* File preview chips */
+        .file-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e0f2fe;
+            color: #0284C7;
+            border-radius: 999px;
+            padding: 3px 10px 3px 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* Upload button */
+        #uploadBtn {
+            transition: background .15s;
+        }
+
+        #uploadBtn:hover {
+            background: #f1f5f9;
+        }
+
+        /* Restart button (replaces Send when done) */
+        #restartBtn {
+            display: none;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .fu {
+            animation: fadeUp .45s ease both;
+        }
+
+        .d1 {
+            animation-delay: .08s;
+        }
+
+        .d2 {
+            animation-delay: .18s;
+        }
+
+        .d3 {
+            animation-delay: .28s;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen flex flex-col">
+
+    <!-- ═══ NAVBAR ═══ -->
+    <nav class="bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between sticky top-0 z-20">
+        <a href="index.html" class="flex items-center gap-2 no-underline">
+            <div class="w-8 h-8 bg-[#0284C7] rounded-xl flex items-center justify-center">
+                <span class="text-white font-bold text-sm">M</span>
+            </div>
+            <span class="font-bold text-slate-800">MediFlow <span class="text-[#0284C7]">AI</span></span>
+        </a>
+        <span class="text-slate-400 text-xs hidden sm:block" id="navLabel">Choose a mode to start</span>
+    </nav>
+
+    <!-- ═══ PROGRESS BAR (hidden until consultation starts) ═══ -->
+    <div id="progressBar" class="hidden bg-white border-b border-slate-100 px-5 py-2.5">
+        <div class="max-w-2xl mx-auto flex items-center gap-3">
+            <span class="text-xs text-slate-400 whitespace-nowrap" id="progressLabel">Waiting to start</span>
+            <div class="flex-1 bg-slate-100 rounded-full h-1.5">
+                <div id="progressFill" class="bg-[#0284C7] h-1.5 rounded-full" style="width:0%"></div>
+            </div>
+            <span class="text-xs text-slate-400 whitespace-nowrap" id="progressStep">0 / 20</span>
+        </div>
+    </div>
+
+    <div class="fu d1 flex flex-col sm:flex-row gap-4 w-full max-w-2xl mb-8">
+
+        <!-- Consultation card -->
+        <div class="hidden" onclick="startMode('consultation')">
+            <div class="text-4xl mb-4">🩺</div>
+            <h2 class="font-bold text-lg text-slate-800 mb-2">Pre-Consultation</h2>
+            <p class="text-slate-500 text-sm leading-relaxed mb-4">
+                Describe your symptoms. The AI will ask detailed medical questions and generate a report for your
+                doctor.
+            </p>
+            <div class="bg-[#0284C7] text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-[#0369a1] transition">
+                Start Consultation →
+            </div>
+        </div>
+
+        <!-- General Q&A card -->
+        <div class="hidden" onclick="startMode('general')">
+            <div class="text-4xl mb-4">💬</div>
+            <h2 class="font-bold text-lg text-slate-800 mb-2">Ask a Health Question</h2>
+            <p class="text-slate-500 text-sm leading-relaxed mb-4">
+                Ask about medications, conditions, symptoms, dosage, or anything health-related. No report
+                generated.
+            </p>
+            <div class="bg-slate-800 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-slate-700 transition">
+                Ask Anything →
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MAIN CHAT LAYOUT (hidden until mode chosen) ═══ -->
+    <div id="chatLayout" class="flex flex-1 gap-5 p-5 max-w-4xl mx-auto w-full">
+
+        <!-- Chat window -->
+        <div class="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
+            style="max-height: calc(100vh - 160px);">
+
+            <!-- Chat header -->
+            <div class="px-5 py-3.5 border-b border-slate-100 flex items-center gap-3">
+                <div class="relative">
+                    <div class="w-9 h-9 bg-sky-100 rounded-full flex items-center justify-center text-lg">🤖</div>
+                    <span
+                        class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border-2 border-white rounded-full"></span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm text-slate-800">MediFlow AI</p>
+                    <p class="text-xs text-emerald-500" id="chatSubtitle">Online · Assistant</p>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div id="chatWindow" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
+
+            <!-- File previews -->
+            <div id="filePreviews" class="hidden px-4 pt-2 flex flex-wrap gap-2"></div>
+
+            <!-- Input bar -->
+            <div class="px-4 py-3 border-t border-slate-100">
+                <!-- Upload row -->
+                <div class="flex items-center gap-2 mb-2">
+                    <label id="uploadBtn" class="cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-[#0284C7]"
+                        title="Attach file">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        <input type="file" id="fileInput" class="hidden" multiple
+                            accept="image/*,.pdf,.doc,.docx,.txt,video/*">
+                    </label>
+                    <span class="text-xs text-slate-400">Attach image, document, or video</span>
+                </div>
+
+                <!-- Text + buttons row -->
+                <div class="flex gap-2 items-end">
+                    <textarea id="inputBox" rows="1" placeholder="Type your message… (Enter to send)"
+                        class="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm resize-none transition"
+                        oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
+
+                    <!-- Send button (shown during chat) -->
+                    <button id="sendBtn" onclick="handleSend()"
+                        class="bg-[#0284C7] hover:bg-[#0369a1] text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-40 flex-shrink-0">
+                        Send
+                    </button>
+
+                    <!-- Restart button (replaces Send when done) -->
+                    <button id="restartBtn" onclick="goHome()"
+                        class="bg-slate-700 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition flex-shrink-0">
+                        ↩ Restart
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Side panel -->
+        <div class="hidden lg:flex flex-col gap-4 w-56 flex-shrink-0">
+
+            <!-- Tips -->
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4" id="sidePanel">
+                <p class="text-xs font-bold text-[#0284C7] uppercase tracking-wide mb-3">💡 Tips</p>
+                <ul class="text-xs text-slate-500 space-y-2 leading-relaxed" id="tipsList">
+                    <li>• Be specific — "sharp pain in chest" not just "pain"</li>
+                    <li>• Include how long it's been going on</li>
+                    <li>• Mention if it's getting worse or better</li>
+                    <li>• List any meds you've taken</li>
+                </ul>
+            </div>
+
+            <!-- Collected data (consultation only) -->
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4" id="collectedBox">
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">📋 Collected So Far</p>
+                <div id="collectedPanel" class="text-xs text-slate-500 space-y-1.5">
+                    <p class="italic text-slate-300">Nothing yet…</p>
+                </div>
+            </div>
+
+            <!-- Disclaimer -->
+            <div class="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-xs text-amber-700 leading-relaxed">
+                ⚠️ This AI provides assistance only — not a medical diagnosis.
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════ -->
+    <script>
+
+        // ═══════════════════════════════════════════
+        // CONFIG
+        // ═══════════════════════════════════════════
+        const CONFIG = {
+            USE_GLM: true,
+            GLM_MODEL: "ilmu-glm-5.1",
+            GLM_ENDPOINT: "/api/chat",
+            MAX_TURNS: 30,
+        };
+
+        // ═══════════════════════════════════════════
+        // SYSTEM PROMPTS
+        // ═══════════════════════════════════════════
+
+        const SYSTEM_CONSULTATION = `
+        You are MediFlow AI, a clinical pre-consultation assistant in a Malaysian hospital triage workflow.
+        Your job is to collect comprehensive medical history from the patient before they see the doctor.
+
+        ## Language Rules
+        - Detect the patient's language and reply in the SAME language throughout (English, Bahasa Malaysia, 中文).
+        - All JSON field VALUES must always be in English.
+
+        ## Smart Collection Rules
+        - Extract ALL information the patient provides in a single message — do NOT ask for info they already gave.
+        - If patient gives multiple answers at once (e.g. "fever 38°C for 3 days, took panadol"), extract all fields and skip those questions.
+        - Ask only about fields still missing. Never re-ask answered fields.
+        - Ask ONE question at a time for whatever is still missing.
+
+        ## Fields to collect (in order, skip if already answered):
+        1. chiefComplaint — main reason for visit
+        2. symptoms — detailed description
+        3. symptomOnset — when it started
+        4. symptomTrend — better/worse/same
+        5. painScore — 1 to 10
+        6. associatedSymptoms — other symptoms
+        7. familyHistory — family history
+        8. prescriptionMeds — prescription medications
+        9. otcMeds — OTC medicines or supplements
+        10. allergies — drug allergies
+        11. pastSurgeries — past surgeries
+        12. chronicConditions — chronic conditions
+        13. smoking — yes/no/ex-smoker
+        14. alcohol — none/occasional/regular
+        15. lifestyle — sleep, diet, stress
+        16. occupation — job and any hazards
+        17. seenSpecialist — seen another doctor?
+        18. patientThoughts — what they think is causing it
+        19. patientConcerns — questions or concerns for doctor
+        20. recentTravel — recent travel or sick contacts
+
+        ## EMERGENCY OVERRIDE
+        If patient mentions: stroke, seizure, cannot breathe, chest pain + sweating, unconscious, severe bleeding,
+        中风, 抽搐, 吐血, 昏迷, 无法呼吸, strok, sawan, tidak sedar, pendarahan teruk
+        → set done:true and severity:"high" immediately.
+
+        ## EVERY reply must be valid JSON in this format:
+        {
+        "question": "Your next question to the patient (in their language). Empty string if done.",
+        "collected": {
+            "chiefComplaint": "...",
+            "symptoms": "...",
+            "symptomOnset": "...",
+            "symptomTrend": "...",
+            "painScore": 0,
+            "associatedSymptoms": "...",
+            "familyHistory": "...",
+            "prescriptionMeds": "...",
+            "otcMeds": "...",
+            "allergies": "...",
+            "pastSurgeries": "...",
+            "chronicConditions": "...",
+            "smoking": "...",
+            "alcohol": "...",
+            "lifestyle": "...",
+            "occupation": "...",
+            "seenSpecialist": "...",
+            "patientThoughts": "...",
+            "patientConcerns": "...",
+            "recentTravel": "...",
+            "attachments": "..."
+        },
+        "done": false
+        }
+
+        ## When ALL 20 fields are collected, set done:true and add these fields to the JSON:
+        "mode": "consultation",
+        "severity": "low|medium|high",
+        "severityScore": 5,
+        "aiReasoning": "One sentence clinical summary.",
+        "suggestedAction": "One clear next step.",
+        "confidence": 75,
+        "possibleCauses": [
+            { "name": "Diagnosis", "likelihood": "high|medium|low" }
+        ]
+
+        ## Rules
+        - ALWAYS return valid JSON. Never return plain text.
+        - Keep "question" short, warm, and professional.
+        - collected fields carry forward — include ALL previously collected fields every time, not just new ones.
+        - If a field is not yet known, use empty string "".
+        `.trim();
+
+        const SYSTEM_GENERAL = `
+You are MediFlow AI, a friendly and knowledgeable health assistant serving patients in Malaysia.
+
+## Your Role
+- Answer any health-related question clearly and helpfully.
+- Cover medications (names, dosage, side effects, interactions), conditions, symptoms, first aid, nutrition, mental health, and more.
+- Be warm, professional, and use plain language.
+- Always recommend consulting a doctor for personal medical decisions.
+
+## Language
+- Respond in the same language the user writes in (English, Bahasa Malaysia, 中文).
+
+## Topics you can help with
+- What is [medication] and what is it used for?
+- Side effects and interactions of medicines
+- What does [symptom] mean?
+- First aid advice
+- Healthy lifestyle tips
+- When to see a doctor
+- Understanding lab results or medical terms
+
+## Rules
+- Never refuse a reasonable health question.
+- If a question requires a personal diagnosis, answer generally and advise them to see a doctor.
+- If the user uploads an image (e.g. a photo of a rash, a prescription), acknowledge and describe what you see.
+- Keep answers concise but complete. Use bullet points for lists.
+- End with: "Would you like to know more, or do you have another question?" if the topic is complex.
+`.trim();
+
+        // ═══════════════════════════════════════════
+        // STORAGE KEYS
+        // ═══════════════════════════════════════════
+        const STORAGE = {
+            PENDING_REPORT: "mf_report_pending",
+            REPORT_FLAG: "mf_report_flag",
+            DOCTOR_DECISION: "mf_decision",
+            HISTORY: "mf_history",
+        };
+
+        // ═══════════════════════════════════════════
+        // STATE
+        // ═══════════════════════════════════════════
+        let conversationHistory = [];
+        let turnCount = 0;
+        let sessionDone = false;
+        let queueInfo = null;
+        let currentMode = null; // 'consultation' | 'general'
+        let attachedFiles = []; // array of { name, type, base64 }
+        let collectedData = {};
+
+        // ═══════════════════════════════════════════
+        // MODE SELECTION
+        // ═══════════════════════════════════════════
+        function startMode(mode) {
+            currentMode = mode;
+
+            document.getElementById("chatLayout").classList.remove("hidden");
+            document.getElementById("chatLayout").classList.add("flex");
+
+            if (mode === 'consultation') {
+                document.getElementById("progressBar").classList.remove("hidden");
+                document.getElementById("navLabel").textContent = "Pre-Consultation Chat";
+                document.getElementById("chatSubtitle").textContent = "Online · Pre-Consultation Assistant";
+                document.getElementById("collectedBox").classList.remove("hidden");
+
+                initConsultationGreeting();
+            } else {
+                document.getElementById("progressBar").classList.add("hidden");
+                document.getElementById("collectedBox").classList.add("hidden");
+                document.getElementById("navLabel").textContent = "Health Q&A";
+                document.getElementById("chatSubtitle").textContent = "Online · Health Assistant";
+
+                initGeneralGreeting();
+            }
+        }
+
+        function goHome() {
+            // Reset everything and go back to mode screen
+            conversationHistory = [];
+            turnCount = 0;
+            sessionDone = false;
+            queueInfo = null;
+            currentMode = null;
+            attachedFiles = [];
+            let collectedData = {};
+
+            document.getElementById("chatWindow").innerHTML = "";
+            document.getElementById("collectedPanel").innerHTML = `<p class="italic text-slate-300">Nothing yet…</p>`;
+            document.getElementById("filePreviews").innerHTML = "";
+            document.getElementById("filePreviews").classList.add("hidden");
+            document.getElementById("fileInput").value = "";
+            updateProgress(0, 20);
+
+            // Show mode selection, hide chat
+            document.getElementById("progressBar").classList.add("hidden");
+            document.getElementById("navLabel").textContent = "Choose a mode to start";
+            location.reload();
+
+            // Reset input bar
+            showSendButton();
+            setInputLocked(false);
+            document.getElementById("inputBox").placeholder = "Type your message…";
+            document.getElementById("inputBox").value = "";
+        }
+
+        // ═══════════════════════════════════════════
+        // GREETINGS
+        // ═══════════════════════════════════════════
+        function initModeSelectionGreeting() {
+            typeText("Hello! Welcome to MediFlow AI. How can I help you today?", "ai");
+
+            setTimeout(() => {
+                const chat = document.getElementById("chatWindow");
+
+                const wrap = document.createElement("div");
+                wrap.className = "flex justify-start msg";
+                wrap.id = "modeSelectionBubble";
+
+                wrap.innerHTML = `
+        <div class="bg-slate-100 text-slate-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[78%]">
+            <p class="mb-3 text-sm">Please choose an option:</p>
+            
+            <div class="flex flex-col gap-2" id="modeBtns">
+                <button id="modeBtn1" onclick="handleModeClick('consultation')" 
+                    class="bg-[#0284C7] text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-[#0369a1]">
+                    🩺 Start Pre-Consultation
+                </button>
+
+                <button id="modeBtn2" onclick="handleModeClick('general')" 
+                    class="bg-slate-700 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-800">
+                    💬 Ask a Health Question
+                </button>
+            </div>
+        </div>
+        `;
+
+                chat.appendChild(wrap);
+                chat.scrollTop = chat.scrollHeight;
+            }, 500);
+        }
+
+        function handleModeClick(mode) {
+            // Prevent double-clicking
+            const btn1 = document.getElementById("modeBtn1");
+            const btn2 = document.getElementById("modeBtn2");
+            if (btn1) { btn1.disabled = true; btn1.style.opacity = "0.5"; btn1.style.cursor = "not-allowed"; }
+            if (btn2) { btn2.disabled = true; btn2.style.opacity = "0.5"; btn2.style.cursor = "not-allowed"; }
+            startMode(mode);
+        }
+
+        function initGeneralGreeting() {
+            setInputLocked(true);
+            showTypingIndicator();
+            setTimeout(() => {
+                removeTypingIndicator();
+                typeText("Hello! I'm MediFlow AI. I can answer any health-related question — medications, symptoms, conditions, first aid, and more. You can also upload photos of prescriptions, rashes, or lab results. What would you like to know?", "ai", 14);
+                setInputLocked(false);
+                document.getElementById("inputBox").focus();
+            }, 900);
+        }
+
+        // ═══════════════════════════════════════════
+        // FILE UPLOAD HANDLING
+        // ═══════════════════════════════════════════
+        document.getElementById("fileInput").addEventListener("change", async function (e) {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+
+            const previews = document.getElementById("filePreviews");
+            previews.classList.remove("hidden");
+
+            for (const file of files) {
+                // Read as base64
+                const b64 = await readFileAsBase64(file);
+                attachedFiles.push({ name: file.name, type: file.type, base64: b64 });
+
+                // Show chip
+                const chip = document.createElement("div");
+                chip.className = "file-chip";
+                const icon = file.type.startsWith("image/") ? "🖼" : file.type.startsWith("video/") ? "🎬" : "📄";
+                chip.innerHTML = `${icon} ${file.name} <span style="cursor:pointer;margin-left:4px" onclick="removeFile('${file.name}', this)">✕</span>`;
+                previews.appendChild(chip);
+            }
+        });
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve) => {
+                const r = new FileReader();
+                r.onload = () => resolve(r.result.split(",")[1]);
+                r.readAsDataURL(file);
+            });
+        }
+
+        function removeFile(name, el) {
+            attachedFiles = attachedFiles.filter(f => f.name !== name);
+            el.parentElement.remove();
+            if (attachedFiles.length === 0) {
+                document.getElementById("filePreviews").classList.add("hidden");
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // API CALL
+        // ═══════════════════════════════════════════
+        async function callGLM(userMessage) {
+            // Build message content — if files attached, include them
+            let userContent;
+
+            if (attachedFiles.length > 0) {
+                const imageParts = attachedFiles
+                    .filter(f => f.type.startsWith("image/"))
+                    .map(f => ({
+                        type: "image_url",
+                        image_url: { url: `data:${f.type};base64,${f.base64}` }
+                    }));
+
+                const docNames = attachedFiles
+                    .filter(f => !f.type.startsWith("image/"))
+                    .map(f => f.name).join(", ");
+
+                let textContent = userMessage;
+                if (docNames) textContent += `\n[Patient also attached document(s): ${docNames}]`;
+
+                if (imageParts.length > 0) {
+                    userContent = [{ type: "text", text: textContent }, ...imageParts];
+                } else {
+                    userContent = textContent;
+                }
+
+                // Clear attachments after sending
+                attachedFiles = [];
+                document.getElementById("filePreviews").innerHTML = "";
+                document.getElementById("filePreviews").classList.add("hidden");
+                document.getElementById("fileInput").value = "";
+            } else {
+                userContent = userMessage;
+            }
+
+            conversationHistory.push({ role: "user", content: userContent });
+
+            const systemPrompt = currentMode === 'consultation' ? SYSTEM_CONSULTATION : SYSTEM_GENERAL;
+
+            // Consultation 模式只传最近 4 条（够 AI 理解上下文），general 模式传全部
+            const messages = currentMode === 'consultation'
+                ? [
+                    {
+                        role: "user",
+                        content: `[CURRENT COLLECTED DATA - do not re-ask these fields, update if patient corrects anything]\n${JSON.stringify(collectedData, null, 2)}`
+                    },
+                    {
+                        role: "assistant",
+                        content: "Understood. I have noted all collected information and will only ask about missing fields."
+                    },
+                    ...conversationHistory.slice(-5)
+                ]
+                : conversationHistory;
+
+            const response = await fetch(CONFIG.GLM_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    model: CONFIG.GLM_MODEL,
+                    max_tokens: 2000,
+                    system: systemPrompt,
+                    messages: messages,
+                }),
+            });
+
+            if (!response.ok) {
+                const errBody = await response.text();
+                throw new Error(`API error ${response.status}: ${errBody}`);
+            }
+
+            const data = await response.json();
+            if (data.error) throw new Error("API error: " + (data.error.message || JSON.stringify(data.error)));
+
+            const rawContent = data.choices?.[0]?.message?.content;
+            if (!rawContent) throw new Error(`Empty response (finish_reason: ${data.choices?.[0]?.finish_reason || "unknown"})`);
+
+            const reply = rawContent.trim();
+            conversationHistory.push({ role: "assistant", content: reply });
+            return reply;
+        }
+
+        // ═══════════════════════════════════════════
+        // MAIN SEND LOOP
+        // ═══════════════════════════════════════════
+        async function handleSend() {
+            if (sessionDone) return;
+
+            const box = document.getElementById("inputBox");
+            const input = box.value.trim();
+
+            // Allow sending files without text
+            if (!input && attachedFiles.length === 0) return;
+
+            box.value = "";
+            box.style.height = "auto";
+            setInputLocked(true);
+
+            // Show user message
+            const displayText = input || "[Attached file(s)]";
+            renderBubble(escapeHtml(displayText), "user");
+
+            showTypingIndicator();
+
+            try {
+                const rawReply = await callGLM(input || "I've attached a file for you to review.");
+                removeTypingIndicator();
+
+                if (currentMode === 'consultation') {
+                    // Parse JSON reply
+                    let parsed = null;
+                    try {
+                        const clean = rawReply.replace(/```json|```/g, "").trim();
+                        const match = clean.match(/\{[\s\S]*\}/);
+                        if (match) parsed = JSON.parse(match[0]);
+                    } catch (_) { }
+
+                    if (!parsed) {
+                        // Fallback if AI returns plain text
+                        typeText(rawReply, "ai");
+                        setInputLocked(false);
+                        return;
+                    }
+
+                    // Merge collected fields into collectedData
+                    if (parsed.collected) {
+                        Object.keys(parsed.collected).forEach(key => {
+                            const val = parsed.collected[key];
+                            // 只有新值不为空时才覆盖，防止 AI 把已有的值清空
+                            if (val !== "" && val !== null && val !== undefined) {
+                                collectedData[key] = val;
+                            }
+                        });
+                        updateCollectedPanel(collectedData);
+
+                        // 进度条根据已填字段数量
+                        const filled = Object.values(collectedData).filter(v => v && v !== "").length;
+                        updateProgress(Math.min(filled, 20), 20);
+                    }
+
+                    if (parsed.done) {
+                        // Merge final report fields
+                        const finalReport = {
+                            ...parsed, ...collectedData,
+                            mode: "consultation",
+                            severity: parsed.severity,
+                            severityScore: parsed.severityScore,
+                            aiReasoning: parsed.aiReasoning,
+                            suggestedAction: parsed.suggestedAction,
+                            confidence: parsed.confidence,
+                            possibleCauses: parsed.possibleCauses,
+                        };
+                        sessionDone = true;
+                        updateProgress(20, 20);
+                        saveReport(finalReport);
+                        updateCollectedPanel(finalReport);
+                        typeText("Thank you for sharing all that with me. I've prepared your comprehensive pre-consultation report. Please keep your queue number handy when you arrive.", "ai");
+                        setTimeout(() => showReportCard(finalReport), 500);
+                        setInputLocked(true);
+                        document.getElementById("inputBox").placeholder = "Consultation complete.";
+                        showRestartButton();
+                    } else {
+                        // Show next question
+                        if (parsed.question) typeText(parsed.question, "ai");
+                        setInputLocked(false);
+                        setTimeout(() => document.getElementById("inputBox").focus(), 100);
+                    }
+                } else {
+                    // General Q&A — just show the reply
+                    typeText(rawReply, "ai");
+                    setInputLocked(false);
+                    setTimeout(() => document.getElementById("inputBox").focus(), 100);
+                }
+
+            } catch (err) {
+                removeTypingIndicator();
+                renderBubble("<b>Error:</b> " + escapeHtml(String(err.message || err)) +
+                    "<br><small style='opacity:.7'>Check the server console for details.</small>", "ai");
+                console.error("[MediFlow] Error:", err);
+                setInputLocked(false);
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // SEND / RESTART BUTTON TOGGLE
+        // ═══════════════════════════════════════════
+        function showRestartButton() {
+            document.getElementById("sendBtn").style.display = "none";
+            document.getElementById("restartBtn").style.display = "inline-flex";
+        }
+
+        function showSendButton() {
+            document.getElementById("sendBtn").style.display = "inline-flex";
+            document.getElementById("restartBtn").style.display = "none";
+        }
+
+        // ═══════════════════════════════════════════
+        // COLLECTED PANEL
+        // ═══════════════════════════════════════════
+        function updateCollectedPanel(report) {
+            const panel = document.getElementById("collectedPanel");
+            const rows = [
+                ["🩺 Complaint", report.chiefComplaint],
+                ["📍 Location", report.location],
+                ["⏱ Duration", report.symptomOnset],
+                ["📊 Pain", report.painScore ? report.painScore + " / 10" : null],
+                ["🌡 Associated", report.associatedSymptoms],
+                ["💊 Meds", report.prescriptionMeds],
+                ["⚠️ Allergies", report.allergies],
+                ["🏥 Conditions", report.chronicConditions],
+            ];
+            const filled = rows.filter(([, v]) => v && v !== "Not specified" && v !== "None reported" && v !== "none");
+            if (!filled.length) { panel.innerHTML = `<p class="italic text-slate-300">Nothing yet…</p>`; return; }
+            panel.innerHTML = filled.map(([l, v]) => `
+    <div>
+      <span class="font-semibold text-slate-600">${l}:</span>
+      <span class="text-slate-500"> ${v}</span>
+    </div>`).join("");
+        }
+
+        // ═══════════════════════════════════════════
+        // REPORT CARD (consultation only)
+        // ═══════════════════════════════════════════
+        // ═══════════════════════════════════════════
+        // REPORT LANGUAGE SWITCHER
+        // Cache so each language only needs one API call
+        // ═══════════════════════════════════════════
+
+        // The translatable text fields in the report
+        const REPORT_TEXT_FIELDS = [
+            "chiefComplaint", "symptomOnset", "symptomTrend",
+            "associatedSymptoms", "prescriptionMeds", "otcMeds",
+            "allergies", "chronicConditions", "lifestyle",
+            "occupation", "patientThoughts", "patientConcerns",
+            "aiReasoning", "suggestedAction"
+        ];
+
+        // UI labels per language
+        const LANG_UI = {
+            en: {
+                title: "Pre-Consultation Report",
+                complaint: "Complaint", onset: "Onset", pain: "Pain Score",
+                trend: "Trend", associated: "Associated Symptoms",
+                medsAllergies: "Medications / Allergies", allergiesLabel: "Allergies",
+                chronic: "Chronic Conditions", lifestyle: "Lifestyle",
+                smoking: "Smoking", alcohol: "Alcohol",
+                confidence: "AI Confidence", summary: "AI Summary",
+                action: "Suggested Action", causes: "Possible Causes",
+                apptTitle: "Your appointment details:",
+                reportSent: "Report sent to doctor for review.",
+                severity: { low: "LOW", medium: "MEDIUM", high: "HIGH" },
+            },
+            bm: {
+                title: "Laporan Pra-Konsultasi",
+                complaint: "Aduan", onset: "Tempoh", pain: "Skor Kesakitan",
+                trend: "Trend", associated: "Gejala Berkaitan",
+                medsAllergies: "Ubat-ubatan / Alahan", allergiesLabel: "Alahan",
+                chronic: "Penyakit Kronik", lifestyle: "Gaya Hidup",
+                smoking: "Merokok", alcohol: "Alkohol",
+                confidence: "Keyakinan AI", summary: "Rumusan AI",
+                action: "Tindakan Dicadangkan", causes: "Kemungkinan Punca",
+                apptTitle: "Butiran temujanji anda:",
+                reportSent: "Laporan telah dihantar kepada doktor untuk semakan.",
+                severity: { low: "RENDAH", medium: "SEDERHANA", high: "TINGGI" },
+            },
+            zh: {
+                title: "预问诊报告",
+                complaint: "主诉", onset: "发病时间", pain: "疼痛评分",
+                trend: "趋势", associated: "伴随症状",
+                medsAllergies: "用药 / 过敏", allergiesLabel: "过敏",
+                chronic: "慢性疾病", lifestyle: "生活习惯",
+                smoking: "吸烟", alcohol: "饮酒",
+                confidence: "AI 置信度", summary: "AI 总结",
+                action: "建议处置", causes: "可能诊断",
+                apptTitle: "您的就诊详情：",
+                reportSent: "报告已发送给医生审阅。",
+                severity: { low: "低", medium: "中", high: "高" },
+            },
+        };
+
+        // Cache: { en: reportObj, bm: reportObj, zh: reportObj }
+        // EN is always the raw report. BM/ZH fetched on demand.
+        let _reportCache = {};
+        let _activeLang = "en";
+        let _baseReport = null; // the original English report
+
+        async function switchReportLang(lang) {
+            if (lang === _activeLang) return;
+
+            // Update tab styles immediately
+            ["en", "bm", "zh"].forEach(l => {
+                const tab = document.getElementById("langTab_" + l);
+                if (!tab) return;
+                if (l === lang) {
+                    tab.className = "lang-tab-active";
+                } else {
+                    tab.className = "lang-tab";
+                }
+            });
+
+            // If we already have this translation cached, render immediately
+            if (_reportCache[lang]) {
+                _activeLang = lang;
+                renderReportFields(_reportCache[lang], lang);
+                return;
+            }
+
+            // Otherwise: show loading state in the fields area
+            const fieldsEl = document.getElementById("reportFields");
+            if (fieldsEl) {
+                fieldsEl.innerHTML = `
+                  <div class="py-6 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <div class="flex gap-1">
+                      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    </div>
+                    <span>${lang === "bm" ? "Menterjemah…" : lang === "zh" ? "翻译中…" : "Translating…"}</span>
+                  </div>`;
+            }
+
+            // Build translation prompt
+            const r = _baseReport;
+            const targetLang = lang === "bm" ? "Bahasa Malaysia (Malay)" : "Simplified Chinese (中文)";
+            const fieldsToTranslate = {};
+            REPORT_TEXT_FIELDS.forEach(f => { if (r[f]) fieldsToTranslate[f] = r[f]; });
+
+            const prompt = `You are a medical translator. Translate the following JSON values into ${targetLang}.
+Keep medical terms accurate. Return ONLY raw JSON with the same keys, no markdown, no explanation.
+
+${JSON.stringify(fieldsToTranslate, null, 2)}`;
+
+            try {
+                const response = await fetch(CONFIG.GLM_ENDPOINT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: CONFIG.GLM_MODEL,
+                        max_tokens: 1200,
+                        messages: [{ role: "user", content: prompt }],
+                    }),
+                });
+                const data = await response.json();
+                const raw = data.choices?.[0]?.message?.content || "{}";
+                const clean = raw.replace(/```json|```/g, "").trim();
+                const translated = JSON.parse(clean);
+
+                // Merge translated text fields onto a copy of the base report
+                const translatedReport = { ..._baseReport, ...translated };
+                _reportCache[lang] = translatedReport;
+                _activeLang = lang;
+                renderReportFields(translatedReport, lang);
+
+            } catch (e) {
+                console.error("Translation error:", e);
+                // Fall back to English
+                _activeLang = "en";
+                const enTab = document.getElementById("langTab_en");
+                if (enTab) enTab.className = "lang-tab-active";
+                const tab = document.getElementById("langTab_" + lang);
+                if (tab) tab.className = "lang-tab";
+                renderReportFields(_baseReport, "en");
+            }
+        }
+
+        function renderReportFields(report, lang) {
+            const ui = LANG_UI[lang] || LANG_UI.en;
+            const fieldsEl = document.getElementById("reportFields");
+            if (!fieldsEl) return;
+
+            const none = lang === "bm" ? "Tiada" : lang === "zh" ? "无" : "None";
+            const dash = "—";
+
+            fieldsEl.innerHTML = `
+    <div class="grid grid-cols-2 gap-2">
+      <div class="bg-slate-50 rounded-xl p-2.5">
+        <p class="text-slate-400 mb-0.5">${ui.complaint}</p>
+        <p class="font-semibold text-slate-700">${report.chiefComplaint || dash}</p>
+      </div>
+      <div class="bg-slate-50 rounded-xl p-2.5">
+        <p class="text-slate-400 mb-0.5">${ui.onset}</p>
+        <p class="font-semibold text-slate-700">${report.symptomOnset || dash}</p>
+      </div>
+      <div class="bg-slate-50 rounded-xl p-2.5">
+        <p class="text-slate-400 mb-0.5">${ui.pain}</p>
+        <p class="font-semibold text-slate-700">${report.painScore ?? dash} / 10</p>
+      </div>
+      <div class="bg-slate-50 rounded-xl p-2.5">
+        <p class="text-slate-400 mb-0.5">${ui.trend}</p>
+        <p class="font-semibold text-slate-700">${report.symptomTrend || dash}</p>
+      </div>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.associated}</p>
+      <p class="font-semibold text-slate-700">${report.associatedSymptoms || dash}</p>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.medsAllergies}</p>
+      <p class="font-semibold text-slate-700">${report.prescriptionMeds || none} · ${ui.allergiesLabel}: ${report.allergies || none}</p>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.chronic}</p>
+      <p class="font-semibold text-slate-700">${report.chronicConditions || none}</p>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.lifestyle}</p>
+      <p class="font-semibold text-slate-700">${ui.smoking}: ${report.smoking || dash} · ${ui.alcohol}: ${report.alcohol || dash}</p>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.confidence}</p>
+      <p class="font-semibold text-[#0284C7]">${report.confidence || dash}%</p>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.summary}</p>
+      <p class="font-semibold text-slate-700">${report.aiReasoning || dash}</p>
+    </div>
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-0.5">${ui.action}</p>
+      <p class="font-semibold text-slate-700">${report.suggestedAction || dash}</p>
+    </div>
+    ${report.possibleCauses?.length ? `
+    <div class="bg-slate-50 rounded-xl p-2.5">
+      <p class="text-slate-400 mb-1">${ui.causes}</p>
+      ${report.possibleCauses.map(c => `
+        <div class="mb-1">
+          <span class="font-semibold text-slate-700">${c.name}</span>
+          <span class="text-slate-400"> (${c.likelihood})</span>
+        </div>`).join("")}
+    </div>` : ""}`;
+        }
+
+        function showReportCard(report) {
+            // Store base (English) report and seed cache
+            _baseReport = report;
+            _reportCache = { en: report };
+            _activeLang = "en";
+
+            const sevClass = { low: "sev-low", medium: "sev-medium", high: "sev-high" }[report.severity] || "sev-low";
+            const sevIcon = { low: "🟢", medium: "🟡", high: "🔴" }[report.severity];
+            const sevLabel = { low: "LOW", medium: "MEDIUM", high: "HIGH" }[report.severity];
+
+            const chat = document.getElementById("chatWindow");
+            const wrap = document.createElement("div");
+            wrap.className = "msg";
+            wrap.id = "reportCardWrap";
+
+            wrap.innerHTML = `
+<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden max-w-sm">
+
+  <!-- Header -->
+  <div class="bg-[#0284C7] px-5 py-3.5 text-white">
+    <p class="font-bold" id="reportTitle">📋 Pre-Consultation Report</p>
+    <p class="text-sky-200 text-xs mt-0.5">MediFlow AI · ${new Date().toLocaleString()}</p>
+  </div>
+
+  <!-- Language tabs -->
+  <div class="flex border-b border-slate-100 bg-slate-50 px-4 pt-3 pb-0 gap-1">
+    <button id="langTab_en" class="lang-tab-active" onclick="switchReportLang('en')">🇬🇧 EN</button>
+    <button id="langTab_bm" class="lang-tab"        onclick="switchReportLang('bm')">🇲🇾 BM</button>
+    <button id="langTab_zh" class="lang-tab"        onclick="switchReportLang('zh')">🇨🇳 中文</button>
+  </div>
+
+  <!-- Severity badge -->
+  <div class="px-5 pt-3 pb-2">
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${sevClass}">
+      ${sevIcon} ${sevLabel} SEVERITY
+    </span>
+  </div>
+
+  <!-- Dynamic fields (swapped by language switcher) -->
+  <div class="px-5 pb-4 space-y-2 text-xs" id="reportFields"></div>
+
+  <!-- Queue / appointment block (always English — it's logistical info) -->
+  <div class="mx-5 mb-2 bg-sky-50 border border-sky-100 rounded-xl px-4 py-3">
+        <p class="text-xs text-sky-600 mb-1">Your appointment details:</p>
+        <p class="font-bold text-[#0284C7]">🏥 ${queueInfo?.room || "See reception"}</p>
+        <p class="font-bold text-[#0284C7]">🎫 Queue: <span class="text-lg">${queueInfo?.queueNo || "—"}</span></p>
+        <p class="text-xs text-sky-500 mt-1">Report sent to doctor for review.</p>
+        </div>
+
+        <!-- Doctor decision status block (real-time polling) -->
+        <div class="mx-5 mb-4" id="decisionBlock">
+        <div id="decisionStatus" class="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 flex items-center gap-3">
+            <div class="flex gap-1">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            </div>
+            <p class="text-xs text-slate-400">Waiting for doctor to review your report…</p>
+        </div>
+        <a href="my_reports.html"
+            class="mt-2 flex items-center justify-center gap-1.5 bg-white border border-sky-200 text-[#0284C7] text-xs font-semibold px-4 py-2 rounded-xl hover:bg-sky-50 transition no-underline">
+            🗂 View My Reports
+        </a>
+  </div>
+
+</div>`;
+
+            chat.appendChild(wrap);
+            chat.scrollTop = chat.scrollHeight;
+
+            // Render English fields immediately (no API call needed)
+            renderReportFields(report, "en");
+            // Start polling for doctor decision
+            startDecisionPolling(report.id || Date.now());
+        }
+
+
+
+        // ═══════════════════════════════════════════
+        // SAVE REPORT
+        // ═══════════════════════════════════════════
+        function saveReport(report) {
+            const queueNo = "Q" + String(Math.floor(Math.random() * 90) + 10).padStart(2, "0");
+            const rooms = ["Consultation Room 1", "Consultation Room 2", "Consultation Room 3", "Room A", "Room B"];
+            const room = rooms[Math.floor(Math.random() * rooms.length)];
+            queueInfo = { queueNo, room };
+
+            const fullReport = { ...report, queueNo, room, submittedAt: new Date().toLocaleString(), id: Date.now(), conversation: conversationHistory };
+
+            // ── Push to queue (so doctor sees ALL pending reports) ──
+            const queue = JSON.parse(localStorage.getItem("mf_reports_queue") || "[]");
+            queue.push(fullReport);
+            localStorage.setItem("mf_reports_queue", JSON.stringify(queue));
+
+            // ── Keep mf_report_pending for backwards compatibility ──
+            localStorage.setItem(STORAGE.PENDING_REPORT, JSON.stringify(fullReport));
+            localStorage.setItem(STORAGE.REPORT_FLAG, Date.now().toString());
+
+            // ── Patient history (dashboard) ──
+            const history = JSON.parse(localStorage.getItem(STORAGE.HISTORY) || "[]");
+            history.unshift({ ...fullReport });
+            localStorage.setItem(STORAGE.HISTORY, JSON.stringify(history.slice(0, 100)));
+        }
+
+        // ═══════════════════════════════════════════
+        // REAL-TIME DOCTOR DECISION POLLING
+        // ═══════════════════════════════════════════
+        let _pollingInterval = null;
+        let _currentReportId = null;
+
+        function startDecisionPolling(reportId) {
+            _currentReportId = reportId;
+            if (_pollingInterval) clearInterval(_pollingInterval);
+
+            _pollingInterval = setInterval(() => {
+                checkDecisionStatus(reportId);
+            }, 4000); // check every 4 seconds
+
+            // Check immediately too
+            checkDecisionStatus(reportId);
+        }
+
+        function checkDecisionStatus(reportId) {
+            // Check localStorage for decision on this report
+            const history = JSON.parse(localStorage.getItem(STORAGE.HISTORY) || "[]");
+            const report = history.find(r => r.id === reportId);
+            if (!report) return;
+
+            // Doctor writes decision into mf_decision_<id> or mf_decision
+            const dec = JSON.parse(localStorage.getItem("mf_decision_" + reportId) || "null")
+                || JSON.parse(localStorage.getItem(STORAGE.DOCTOR_DECISION) || "null");
+
+            const statusEl = document.getElementById("decisionStatus");
+            if (!statusEl) return;
+
+            if (dec && dec.status === "approved") {
+                clearInterval(_pollingInterval);
+                statusEl.className = "bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3";
+                statusEl.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <span class="text-xl">✅</span>
+                        <div>
+                            <p class="font-bold text-emerald-700 text-sm">Doctor Approved Your Report</p>
+                            ${dec.doctorAction ? `<p class="text-xs text-emerald-600 mt-0.5">📋 ${dec.doctorAction}</p>` : ""}
+                            ${dec.doctorNotes ? `<p class="text-xs text-emerald-500 mt-0.5">💬 ${dec.doctorNotes}</p>` : ""}
+                            ${dec.reviewedAt ? `<p class="text-xs text-emerald-300 mt-1">${dec.reviewedAt}</p>` : ""}
+                        </div>
+                    </div>`;
+            } else if (dec && dec.status === "rejected") {
+                clearInterval(_pollingInterval);
+                statusEl.className = "bg-red-50 border border-red-200 rounded-xl px-4 py-3";
+                statusEl.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <span class="text-xl">❌</span>
+                        <div>
+                            <p class="font-bold text-red-700 text-sm">Report Rejected by Doctor</p>
+                            ${dec.doctorNotes ? `<p class="text-xs text-red-600 mt-0.5">💬 ${dec.doctorNotes}</p>` : ""}
+                            ${dec.reviewedAt ? `<p class="text-xs text-red-300 mt-1">${dec.reviewedAt}</p>` : ""}
+                            <button onclick="location.reload()"
+                                class="mt-2 bg-[#0284C7] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0369a1] transition">
+                                Start New Consultation →
+                            </button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        function stopDecisionPolling() {
+            if (_pollingInterval) clearInterval(_pollingInterval);
+        }
+
+        // ═══════════════════════════════════════════
+        // PROGRESS BAR
+        // ═══════════════════════════════════════════
+        function updateProgress(step, total = 20) {
+            const pct = Math.min(Math.round((step / total) * 100), 100);
+            document.getElementById("progressFill").style.width = pct + "%";
+            document.getElementById("progressStep").textContent = `${step} / ${total}`;
+            document.getElementById("progressLabel").textContent =
+                pct === 0 ? "Waiting to start" :
+                    pct < 30 ? "Collecting symptoms…" :
+                        pct < 60 ? "Medical history…" :
+                            pct < 85 ? "Lifestyle questions…" :
+                                pct < 100 ? "Almost done…" :
+                                    "Report ready ✓";
+        }
+
+        // ═══════════════════════════════════════════
+        // DOCTOR DECISION BANNER — removed
+        // The banner was misleading: a new patient visiting chat.html
+        // would see a stale decision from a previous patient's session.
+        // Decision feedback is now only shown in the report card itself
+        // via the queue/room info block, and in doctor.html.
+        // ═══════════════════════════════════════════
+        function loadDecisionBanner() { /* intentionally disabled */ }
+
+        // ═══════════════════════════════════════════
+        // UI HELPERS
+        // ═══════════════════════════════════════════
+        function renderBubble(html, sender) {
+            const chat = document.getElementById("chatWindow");
+            const isUser = sender === "user";
+            const wrap = document.createElement("div");
+            wrap.className = `flex ${isUser ? "justify-end" : "justify-start"} msg`;
+            wrap.innerHTML = `
+    <div class="max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
+      ${isUser ? "bg-[#0284C7] text-white rounded-tr-sm" : "bg-slate-100 text-slate-800 rounded-tl-sm"}">
+      ${html}
+    </div>`;
+            chat.appendChild(wrap);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function typeText(text, sender, speed = 16) {
+            const chat = document.getElementById("chatWindow");
+            const isUser = sender === "user";
+            const wrap = document.createElement("div");
+            wrap.className = `flex ${isUser ? "justify-end" : "justify-start"} msg`;
+            const bubble = document.createElement("div");
+            bubble.className = `max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed
+    ${isUser ? "bg-[#0284C7] text-white rounded-tr-sm" : "bg-slate-100 text-slate-800 rounded-tl-sm"}`;
+            wrap.appendChild(bubble);
+            chat.appendChild(wrap);
+            let i = 0;
+            const t = () => { if (i < text.length) { bubble.textContent += text[i++]; chat.scrollTop = chat.scrollHeight; setTimeout(t, speed); } };
+            t();
+        }
+
+        function showTypingIndicator() {
+            const chat = document.getElementById("chatWindow");
+            const wrap = document.createElement("div");
+            wrap.id = "typingWrap";
+            wrap.className = "flex justify-start msg";
+            wrap.innerHTML = `<div class="bg-slate-100 px-4 py-3 rounded-2xl rounded-tl-sm flex gap-1.5 items-center">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
+            chat.appendChild(wrap);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function removeTypingIndicator() { document.getElementById("typingWrap")?.remove(); }
+
+        function setInputLocked(locked) {
+            document.getElementById("inputBox").disabled = locked;
+            document.getElementById("sendBtn").disabled = locked;
+        }
+
+        function handleKey(e) {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+        }
+
+        function autoResize(el) {
+            el.style.height = "auto";
+            el.style.height = Math.min(el.scrollHeight, 140) + "px";
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function initConsultationGreeting() {
+            setInputLocked(true);
+            showTypingIndicator();
+
+            setTimeout(() => {
+                removeTypingIndicator();
+
+                typeText(
+                    "Hello! I'm MediFlow AI, your pre-consultation assistant. I'll ask you a few questions to help prepare your medical report.",
+                    "ai"
+                );
+
+                setTimeout(() => {
+                    typeText(
+                        "Let's start — what brings you in today? Please describe your symptoms.",
+                        "ai"
+                    );
+                    setInputLocked(false);
+                }, 1200);
+
+            }, 800);
+        }
+
+        // ═══════════════════════════════════════════
+        // BOOT
+        // ═══════════════════════════════════════════
+        loadDecisionBanner();
+
+        window.onload = () => {
+            document.getElementById("chatLayout").classList.remove("hidden");
+            document.getElementById("chatLayout").classList.add("flex");
+
+            initModeSelectionGreeting(); // 👈 this shows Shopee-style buttons
+        };
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>MediFlow AI — My Reports</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Sora', sans-serif;
+        }
+
+        body {
+            background: #F8FAFC;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(14px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fu {
+            animation: fadeUp .4s ease both;
+        }
+
+        /* Language pill tabs */
+        .ltab {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid #e2e8f0;
+            color: #94a3b8;
+            background: white;
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap;
+        }
+
+        .ltab:hover {
+            color: #0284C7;
+            border-color: #bae6fd;
+        }
+
+        .ltab.active {
+            background: #0284C7;
+            color: white;
+            border-color: #0284C7;
+        }
+
+        /* Status badges */
+        .badge-pending {
+            background: #F1F5F9;
+            color: #64748B;
+        }
+
+        .badge-approved {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+
+        .badge-rejected {
+            background: #FEE2E2;
+            color: #991B1B;
+        }
+
+        /* Accordion */
+        .acc-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height .4s ease;
+        }
+
+        .acc-body.open {
+            max-height: 2000px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: #94a3b8;
+            border-radius: 50%;
+            display: inline-block;
+            animation: dotBounce 1.2s infinite ease-in-out;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: .2s;
+        }
+
+        .dot:nth-child(3) {
+            animation-delay: .4s;
+        }
+
+        @keyframes dotBounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+            }
+
+            30% {
+                transform: translateY(-5px);
+            }
+        }
+
+        /* Notification dot on "new" badge */
+        @keyframes ping {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            60% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        .ping-dot {
+            animation: ping 1.4s ease infinite;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+
+    <!-- ── NAVBAR ── -->
+    <nav class="bg-white border-b border-slate-100 px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
+        <a href="index.html" class="flex items-center gap-2 no-underline">
+            <div class="w-8 h-8 bg-[#0284C7] rounded-xl flex items-center justify-center">
+                <span class="text-white font-bold text-sm">M</span>
+            </div>
+            <span class="font-bold text-slate-800">MediFlow <span class="text-[#0284C7]">AI</span></span>
+        </a>
+        <div class="flex items-center gap-4 text-sm">
+            <a href="chat.html" class="text-slate-400 hover:text-[#0284C7] transition">AI Chat</a>
+            <a href="index.html" class="text-slate-400 hover:text-[#0284C7] transition">← Home</a>
+        </div>
+    </nav>
+
+    <div class="max-w-2xl mx-auto px-5 py-8 space-y-5">
+
+        <!-- Header row -->
+        <div class="fu flex items-start justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">🗂 My Reports</h1>
+                <p class="text-sm text-slate-500 mt-1">All your pre-consultation reports and doctor decisions</p>
+            </div>
+
+            <div class="flex items-center gap-3 flex-shrink-0 mt-1">
+                <!-- Refresh button -->
+                <button onclick="manualRefresh()" id="refreshBtn"
+                    class="flex items-center gap-1.5 text-xs text-slate-400 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 hover:text-[#0284C7] hover:border-[#0284C7] transition">
+                    🔄 <span id="refreshLabel">Refresh</span>
+                </button>
+
+                <!-- Global language switcher -->
+                <div class="flex gap-1.5" id="globalLangTabs">
+                    <button class="ltab active" onclick="setGlobalLang('en')" id="gltab_en">🇬🇧 EN</button>
+                    <button class="ltab" onclick="setGlobalLang('bm')" id="gltab_bm">🇲🇾 BM</button>
+                    <button class="ltab" onclick="setGlobalLang('zh')" id="gltab_zh">🇨🇳 中文</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Translating indicator (shown while any translation is in progress) -->
+        <div id="transIndicator" class="hidden fu text-xs text-slate-400 flex items-center gap-2 px-1">
+            <span class="flex gap-1"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+            <span id="transMsg">Translating…</span>
+        </div>
+
+        <!-- Empty state -->
+        <div id="emptyState" class="hidden fu bg-white rounded-2xl border border-slate-100 shadow-sm p-14 text-center">
+            <div class="text-5xl mb-3">📭</div>
+            <p class="font-semibold text-slate-700">No reports yet</p>
+            <p class="text-sm text-slate-400 mt-1 mb-5">Complete a pre-consultation to generate your first report.</p>
+            <a href="chat.html"
+                class="inline-block bg-[#0284C7] text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-[#0369A1] transition no-underline">
+                Start Consultation →
+            </a>
+        </div>
+
+        <!-- Report list -->
+        <div id="reportList" class="space-y-4"></div>
+
+        <!-- Clear button -->
+        <div id="clearRow" class="hidden text-center pt-2">
+            <button onclick="clearAll()"
+                class="text-xs text-red-400 border border-red-200 px-4 py-1.5 rounded-lg hover:bg-red-50 transition">
+                🗑 Clear all my reports
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // ════════════════════════════════════════════
+        // CONFIG — must match chat.html
+        // ════════════════════════════════════════════
+        const GLM_ENDPOINT = "/api/chat";
+        const GLM_MODEL = "ilmu-glm-5.1";
+        const HISTORY_KEY = "mf_history";
+
+        // ════════════════════════════════════════════
+        // TRANSLATIONS CACHE
+        // translCache[reportId][lang] = { field: value, … }
+        // ════════════════════════════════════════════
+        let translCache = {};
+
+        // Current global language
+        let globalLang = "en";
+
+        // ════════════════════════════════════════════
+        // UI LABELS
+        // ════════════════════════════════════════════
+        const UI = {
+            en: {
+                complaint: "Complaint", onset: "Onset", pain: "Pain Score", trend: "Trend",
+                associated: "Associated Symptoms", meds: "Medications", allergies: "Allergies",
+                chronic: "Chronic Conditions", lifestyle: "Lifestyle", smoking: "Smoking", alcohol: "Alcohol",
+                reasoning: "AI Summary", action: "Suggested Action", causes: "Possible Causes",
+                confidence: "AI Confidence",
+                statusLabel: { pending: "⏳ Pending Review", approved: "✅ Approved", rejected: "❌ Rejected" },
+                doctorAction: "Doctor's Recommended Action", doctorNotes: "Doctor's Notes",
+                reviewedAt: "Reviewed", submittedAt: "Submitted",
+                queue: "Queue No.", room: "Room",
+                newConsult: "Start New Consultation →",
+                detailsBtn: "View Details", hideBtn: "Hide Details",
+                transMsg: "Translating…",
+                pendingNote: "Your report is pending doctor review.",
+                rejectedNote: "Your report was rejected. Please start a new consultation.",
+            },
+            bm: {
+                complaint: "Aduan", onset: "Tempoh", pain: "Skor Kesakitan", trend: "Trend",
+                associated: "Gejala Berkaitan", meds: "Ubat-ubatan", allergies: "Alahan",
+                chronic: "Penyakit Kronik", lifestyle: "Gaya Hidup", smoking: "Merokok", alcohol: "Alkohol",
+                reasoning: "Rumusan AI", action: "Cadangan Tindakan", causes: "Kemungkinan Punca",
+                confidence: "Keyakinan AI",
+                statusLabel: { pending: "⏳ Menunggu Semakan", approved: "✅ Diluluskan", rejected: "❌ Ditolak" },
+                doctorAction: "Tindakan Disyorkan Doktor", doctorNotes: "Nota Doktor",
+                reviewedAt: "Disemak", submittedAt: "Dihantar",
+                queue: "No. Giliran", room: "Bilik",
+                newConsult: "Mulakan Konsultasi Baharu →",
+                detailsBtn: "Lihat Butiran", hideBtn: "Sembunyikan",
+                transMsg: "Menterjemah…",
+                pendingNote: "Laporan anda sedang menunggu semakan doktor.",
+                rejectedNote: "Laporan anda ditolak. Sila mulakan konsultasi baharu.",
+            },
+            zh: {
+                complaint: "主诉", onset: "发病时间", pain: "疼痛评分", trend: "趋势",
+                associated: "伴随症状", meds: "用药", allergies: "过敏",
+                chronic: "慢性疾病", lifestyle: "生活习惯", smoking: "吸烟", alcohol: "饮酒",
+                reasoning: "AI 总结", action: "建议处置", causes: "可能诊断",
+                confidence: "AI 置信度",
+                statusLabel: { pending: "⏳ 待审核", approved: "✅ 已批准", rejected: "❌ 已拒绝" },
+                doctorAction: "医生建议处置", doctorNotes: "医生备注",
+                reviewedAt: "审核时间", submittedAt: "提交时间",
+                queue: "排队号", room: "诊室",
+                newConsult: "开始新的问诊 →",
+                detailsBtn: "查看详情", hideBtn: "收起",
+                transMsg: "翻译中…",
+                pendingNote: "您的报告正在等待医生审核。",
+                rejectedNote: "您的报告已被拒绝，请重新开始问诊。",
+            },
+        };
+
+        // Fields we send to the translation API
+        const TEXT_FIELDS = [
+            "chiefComplaint", "symptomOnset", "symptomTrend", "associatedSymptoms",
+            "prescriptionMeds", "allergies", "chronicConditions", "smoking", "alcohol",
+            "aiReasoning", "suggestedAction", "lifestyle", "occupation"
+        ];
+
+        // ════════════════════════════════════════════
+        // GLOBAL LANG SWITCHER
+        // ════════════════════════════════════════════
+        function setGlobalLang(lang) {
+            if (lang === globalLang) return;
+            globalLang = lang;
+
+            // Update tab styles
+            ["en", "bm", "zh"].forEach(l => {
+                document.getElementById("gltab_" + l).className =
+                    "ltab" + (l === lang ? " active" : "");
+            });
+
+            // Re-render all report cards in new language
+            renderAll();
+        }
+
+        // ════════════════════════════════════════════
+        // TRANSLATE ONE REPORT (returns promise)
+        // ════════════════════════════════════════════
+        async function translateReport(report, lang) {
+            const id = report.id;
+            if (!translCache[id]) translCache[id] = {};
+            if (translCache[id][lang]) return translCache[id][lang]; // cached
+
+            const targetLang = lang === "bm"
+                ? "Bahasa Malaysia (Malay)"
+                : "Simplified Chinese (中文)";
+
+            const fieldsToTranslate = {};
+            TEXT_FIELDS.forEach(f => { if (report[f]) fieldsToTranslate[f] = report[f]; });
+
+            const prompt = `You are a medical translator. Translate the following JSON field values into ${targetLang}.
+Keep medical terminology accurate. Return ONLY raw JSON with the same keys, no markdown, no explanation.
+
+${JSON.stringify(fieldsToTranslate, null, 2)}`;
+
+            const response = await fetch(GLM_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    model: GLM_MODEL,
+                    max_tokens: 1200,
+                    messages: [{ role: "user", content: prompt }],
+                }),
+            });
+            const data = await response.json();
+            const raw = data.choices?.[0]?.message?.content || "{}";
+            const clean = raw.replace(/```json|```/g, "").trim();
+            const translated = JSON.parse(clean);
+
+            translCache[id][lang] = translated;
+            return translated;
+        }
+
+        // ════════════════════════════════════════════
+        // RENDER ALL — respects globalLang
+        // ════════════════════════════════════════════
+        async function renderAll() {
+            const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+
+            document.getElementById("emptyState").classList.toggle("hidden", history.length > 0);
+            document.getElementById("clearRow").classList.toggle("hidden", history.length === 0);
+
+            const list = document.getElementById("reportList");
+
+            if (history.length === 0) { list.innerHTML = ""; return; }
+
+            if (globalLang !== "en") {
+                // Show translating indicator
+                const ind = document.getElementById("transIndicator");
+                document.getElementById("transMsg").textContent = UI[globalLang].transMsg;
+                ind.classList.remove("hidden");
+
+                // Translate all reports in parallel
+                try {
+                    await Promise.all(history.map(r => translateReport(r, globalLang)));
+                } catch (e) {
+                    console.error("Translation error:", e);
+                }
+                ind.classList.add("hidden");
+            }
+
+            list.innerHTML = "";
+            history.forEach((report, idx) => renderCard(report, idx, list));
+        }
+
+        // ════════════════════════════════════════════
+        // RENDER ONE CARD
+        // ════════════════════════════════════════════
+        function renderCard(report, idx, container) {
+            const ui = UI[globalLang] || UI.en;
+            const lang = globalLang;
+
+            // Merge translation if available
+            const tr = (translCache[report.id] && translCache[report.id][lang]) || {};
+            const r = lang === "en" ? report : { ...report, ...tr };
+
+            const dec = report.doctorDecision; // always keep English for doctor data
+            const status = dec ? dec.status : "pending";
+
+            const sev = report.severity || "low";
+            const sevIcon = { low: "🟢", medium: "🟡", high: "🔴" }[sev] || "⚪";
+            const sevBg = { low: "#D1FAE5", medium: "#FEF3C7", high: "#FEE2E2" }[sev];
+            const sevColor = { low: "#065F46", medium: "#92400E", high: "#991B1B" }[sev];
+            const sevLabel = { low: "LOW", medium: "MEDIUM", high: "HIGH" }[sev];
+
+            const statusBadge = {
+                pending: `<span class="badge-pending  px-2.5 py-1 rounded-full text-xs font-bold">${ui.statusLabel.pending}</span>`,
+                approved: `<span class="badge-approved px-2.5 py-1 rounded-full text-xs font-bold">${ui.statusLabel.approved}</span>`,
+                rejected: `<span class="badge-rejected px-2.5 py-1 rounded-full text-xs font-bold">${ui.statusLabel.rejected}</span>`,
+            }[status];
+
+            // Highlight new decision (approved/rejected and not yet seen)
+            const isNew = dec && !report._decisionSeen;
+            const newDot = isNew
+                ? `<span class="relative flex-shrink-0 w-2.5 h-2.5">
+                 <span class="ping-dot absolute inset-0 rounded-full ${status === 'approved' ? 'bg-emerald-400' : 'bg-red-400'} opacity-75"></span>
+                 <span class="relative w-2.5 h-2.5 rounded-full ${status === 'approved' ? 'bg-emerald-500' : 'bg-red-500'} inline-block"></span>
+               </span>`
+                : "";
+
+            // Card wrapper
+            const card = document.createElement("div");
+            card.className = "fu bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden";
+            card.style.animationDelay = (idx * 0.06) + "s";
+
+            // ── Approved special banner ──
+            const approvedBanner = status === "approved" ? `
+        <div class="bg-emerald-50 border-b border-emerald-100 px-5 py-3 flex items-start gap-3">
+            <span class="text-xl">✅</span>
+            <div class="flex-1">
+                <p class="font-semibold text-emerald-700 text-sm">${ui.statusLabel.approved}</p>
+                ${dec?.action ? `<p class="text-xs text-emerald-600 mt-0.5"><b>${ui.doctorAction}:</b> ${dec.action}</p>` : ""}
+                ${dec?.doctorNotes ? `<p class="text-xs text-emerald-600 mt-0.5"><b>${ui.doctorNotes}:</b> ${dec.doctorNotes}</p>` : ""}
+                ${dec?.reviewedAt ? `<p class="text-xs text-emerald-400 mt-1">${ui.reviewedAt}: ${dec.reviewedAt}</p>` : ""}
+            </div>
+        </div>` : "";
+
+            // ── Rejected special banner ──
+            const rejectedBanner = status === "rejected" ? `
+        <div class="bg-red-50 border-b border-red-100 px-5 py-3 flex items-start gap-3">
+            <span class="text-xl">❌</span>
+            <div class="flex-1">
+                <p class="font-semibold text-red-700 text-sm">${ui.statusLabel.rejected}</p>
+                ${dec?.doctorNotes ? `<p class="text-xs text-red-600 mt-0.5"><b>${ui.doctorNotes}:</b> ${dec.doctorNotes}</p>` : ""}
+                <p class="text-xs text-red-500 mt-1">${ui.rejectedNote}</p>
+                ${dec?.reviewedAt ? `<p class="text-xs text-red-300 mt-1">${ui.reviewedAt}: ${dec.reviewedAt}</p>` : ""}
+            </div>
+        </div>
+        <div class="px-5 py-3 border-b border-slate-100">
+            <a href="chat.html"
+               class="inline-block bg-[#0284C7] text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-[#0369A1] transition no-underline">
+                ${ui.newConsult}
+            </a>
+        </div>` : "";
+
+            // ── Pending note ──
+            const pendingNote = status === "pending" ? `
+        <div class="bg-slate-50 border-b border-slate-100 px-5 py-2.5">
+            <p class="text-xs text-slate-400">⏳ ${ui.pendingNote}</p>
+        </div>` : "";
+
+            card.innerHTML = `
+        <!-- Card header (always visible) -->
+        <div class="px-5 py-4 flex items-center justify-between gap-3 cursor-pointer select-none"
+             onclick="toggleAcc('acc_${idx}', '${idx}')">
+            <div class="flex items-center gap-2.5 min-w-0">
+                ${newDot}
+                <div class="min-w-0">
+                    <p class="font-semibold text-slate-800 text-sm truncate">${r.chiefComplaint || "—"}</p>
+                    <p class="text-xs text-slate-400 mt-0.5">${ui.submittedAt}: ${report.submittedAt || "—"}</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <span class="text-xs px-2.5 py-1 rounded-full font-bold"
+                      style="background:${sevBg}; color:${sevColor};">${sevIcon} ${sevLabel}</span>
+                ${statusBadge}
+                <span class="text-slate-300 text-xs" id="accArrow_${idx}">▼</span>
+            </div>
+        </div>
+
+        ${approvedBanner}
+        ${rejectedBanner}
+        ${pendingNote}
+
+        <!-- Accordion body -->
+        <div class="acc-body" id="acc_${idx}">
+            <div class="px-5 pb-5 space-y-2 text-xs border-t border-slate-100 pt-4">
+
+                <!-- Queue info -->
+                <div class="flex gap-4 mb-3">
+                    <div class="bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 flex-1">
+                        <p class="text-sky-400 mb-0.5">${ui.queue}</p>
+                        <p class="font-bold text-[#0284C7]">${report.queueNo || "—"}</p>
+                    </div>
+                    <div class="bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 flex-1">
+                        <p class="text-sky-400 mb-0.5">${ui.room}</p>
+                        <p class="font-bold text-[#0284C7]">${report.room || "—"}</p>
+                    </div>
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 flex-1">
+                        <p class="text-slate-400 mb-0.5">${ui.confidence}</p>
+                        <p class="font-bold text-[#0284C7]">${report.confidence || "—"}%</p>
+                    </div>
+                </div>
+
+                <!-- 2-col grid fields -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="bg-slate-50 rounded-xl p-2.5">
+                        <p class="text-slate-400 mb-0.5">${ui.onset}</p>
+                        <p class="font-semibold text-slate-700">${r.symptomOnset || "—"}</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5">
+                        <p class="text-slate-400 mb-0.5">${ui.pain}</p>
+                        <p class="font-semibold text-slate-700">${report.painScore ?? "—"} / 10</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5">
+                        <p class="text-slate-400 mb-0.5">${ui.trend}</p>
+                        <p class="font-semibold text-slate-700">${r.symptomTrend || "—"}</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5">
+                        <p class="text-slate-400 mb-0.5">${ui.lifestyle}</p>
+                        <p class="font-semibold text-slate-700">${ui.smoking}: ${r.smoking || "—"} · ${ui.alcohol}: ${r.alcohol || "—"}</p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-2.5">
+                    <p class="text-slate-400 mb-0.5">${ui.associated}</p>
+                    <p class="font-semibold text-slate-700">${r.associatedSymptoms || "—"}</p>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-2.5">
+                    <p class="text-slate-400 mb-0.5">${ui.meds} / ${ui.allergies}</p>
+                    <p class="font-semibold text-slate-700">${r.prescriptionMeds || (lang === "bm" ? "Tiada" : lang === "zh" ? "无" : "None")} · ${ui.allergies}: ${r.allergies || (lang === "bm" ? "Tiada" : lang === "zh" ? "无" : "None")}</p>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-2.5">
+                    <p class="text-slate-400 mb-0.5">${ui.chronic}</p>
+                    <p class="font-semibold text-slate-700">${r.chronicConditions || (lang === "bm" ? "Tiada" : lang === "zh" ? "无" : "None")}</p>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-2.5">
+                    <p class="text-slate-400 mb-0.5">${ui.reasoning}</p>
+                    <p class="font-semibold text-slate-700">${r.aiReasoning || "—"}</p>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-2.5">
+                    <p class="text-slate-400 mb-0.5">${ui.action}</p>
+                    <p class="font-semibold text-slate-700">${r.suggestedAction || "—"}</p>
+                </div>
+
+                ${report.possibleCauses?.length ? `
+                <div class="bg-slate-50 rounded-xl p-2.5">
+                    <p class="text-slate-400 mb-1">${ui.causes}</p>
+                    ${report.possibleCauses.map(c => `
+                    <div class="flex items-center gap-1.5 mb-1">
+                        <span class="font-semibold text-slate-700">${c.name}</span>
+                        <span class="text-slate-400">(${c.likelihood})</span>
+                    </div>`).join("")}
+                </div>` : ""}
+
+            </div>
+        </div>`;
+
+            container.appendChild(card);
+
+            // Mark decision as seen
+            if (isNew) markDecisionSeen(report.id);
+        }
+
+        // ════════════════════════════════════════════
+        // ACCORDION TOGGLE
+        // ════════════════════════════════════════════
+        function toggleAcc(accId, idx) {
+            const body = document.getElementById(accId);
+            const arrow = document.getElementById("accArrow_" + idx);
+            const isOpen = body.classList.contains("open");
+            body.classList.toggle("open", !isOpen);
+            if (arrow) arrow.style.transform = isOpen ? "rotate(0deg)" : "rotate(180deg)";
+        }
+
+        // ════════════════════════════════════════════
+        // MARK DECISION SEEN (removes ping dot)
+        // ════════════════════════════════════════════
+        function markDecisionSeen(reportId) {
+            const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+            const idx = history.findIndex(r => r.id === reportId);
+            if (idx !== -1) {
+                history[idx]._decisionSeen = true;
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            }
+        }
+
+        // ════════════════════════════════════════════
+        // CLEAR ALL
+        // ════════════════════════════════════════════
+        function clearAll() {
+            if (!confirm("Clear all your report history? This cannot be undone.")) return;
+            localStorage.removeItem(HISTORY_KEY);
+            translCache = {};
+            renderAll();
+        }
+
+        // ════════════════════════════════════════════
+        // INIT
+        // ════════════════════════════════════════════
+        renderAll();
+
+        function manualRefresh() {
+            const btn = document.getElementById("refreshBtn");
+            const label = document.getElementById("refreshLabel");
+
+            // 显示 loading 状态
+            label.textContent = "Refreshing…";
+            btn.disabled = true;
+            btn.classList.add("opacity-50");
+
+            // 重新渲染
+            translCache = {};   // 清除翻译缓存，确保重新拉取
+            renderAll();
+
+            // 1.5 秒后恢复按钮
+            setTimeout(() => {
+                label.textContent = "Refresh";
+                btn.disabled = false;
+                btn.classList.remove("opacity-50");
+            }, 1500);
+        }
+
+    </script>
+</body>
+
+</html>
